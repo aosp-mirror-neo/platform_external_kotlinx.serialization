@@ -1,0 +1,16 @@
+name: "kotlinx.serialization"
+description:
+    "Kotlin serialization consists of a compiler plugin, that generates visitor "
+    "code for serializable classes, runtime library with core serialization API "
+    "and support libraries with various serialization formats."
+
+third_party {
+  identifier {
+    type: "Git"
+    value: "https://github.com/Kotlin/kotlinx.serialization"
+    primary_source: true
+    version: "v1.3.3"
+  }
+  last_upgrade_date { year: 2024 month: 3 day: 7 }
+  license_type: NOTICE
+}
