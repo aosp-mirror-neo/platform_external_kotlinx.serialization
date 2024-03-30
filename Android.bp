@@ -2,11 +2,25 @@ java_library {
     name: "kotlinx_serialization",
     host_supported: true,
     sdk_version: "core_current",
-    srcs: ["kotlinx-serialization-core/jvmMain/src/kotlinx/serialization/**/*.kt"],
-    common_srcs: ["kotlinx-serialization-core/commonMain/src/kotlinx/serialization/**/*.kt"],
+    srcs: ["core/jvmMain/src/kotlinx/serialization/**/*.kt"],
+    common_srcs: ["core/commonMain/src/kotlinx/serialization/**/*.kt"],
     kotlincflags: [
         "-Xmulti-platform",
-        "-Xuse-experimental=kotlinx.serialization.ExperimentalSerializationApi",
-        "-Xuse-experimental=kotlinx.serialization.InternalSerializationApi",
+        "-opt-in=kotlinx.serialization.ExperimentalSerializationApi",
+        "-opt-in=kotlinx.serialization.InternalSerializationApi",
     ],
+}
+
+java_library {
+    name: "kotlinx_serialization_json",
+    host_supported: true,
+    sdk_version: "core_current",
+    srcs: ["formats/json/jvmMain/src/kotlinx/serialization/**/*.kt"],
+    common_srcs: ["formats/json/commonMain/src/kotlinx/serialization/**/*.kt"],
+    kotlincflags: [
+        "-Xmulti-platform",
+        "-opt-in=kotlinx.serialization.ExperimentalSerializationApi",
+        "-opt-in=kotlinx.serialization.InternalSerializationApi",
+    ],
+    static_libs: ["kotlinx_serialization"],
 }
