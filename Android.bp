@@ -1,5 +1,5 @@
 java_library {
-    name: "kotlinx_serialization",
+    name: "kotlinx_serialization_core",
     host_supported: true,
     sdk_version: "core_current",
     srcs: ["core/jvmMain/src/kotlinx/serialization/**/*.kt"],
@@ -8,6 +8,10 @@ java_library {
         "-Xmulti-platform",
         "-opt-in=kotlinx.serialization.ExperimentalSerializationApi",
         "-opt-in=kotlinx.serialization.InternalSerializationApi",
+    ],
+    apex_available: [
+        "//apex_available:platform",
+        "//apex_available:anyapex",
     ],
 }
 
@@ -22,5 +26,9 @@ java_library {
         "-opt-in=kotlinx.serialization.ExperimentalSerializationApi",
         "-opt-in=kotlinx.serialization.InternalSerializationApi",
     ],
-    static_libs: ["kotlinx_serialization"],
+    static_libs: ["kotlinx_serialization_core"],
+    apex_available: [
+        "//apex_available:platform",
+        "//apex_available:anyapex",
+    ],
 }
