@@ -4,12 +4,15 @@
 
 package kotlinx.serialization
 
+import kotlinx.serialization.builtins.NothingSerializer
+import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.descriptors.*
 import kotlinx.serialization.encoding.*
 import kotlinx.serialization.encoding.CompositeDecoder.Companion.UNKNOWN_NAME
-import kotlinx.serialization.internal.*
 import kotlinx.serialization.modules.*
+import kotlinx.serialization.test.*
 import kotlin.test.*
+import kotlin.time.Duration
 
 /*
  * Test ensures that type that aggregate all basic (primitive/collection/maps/arrays)
@@ -20,7 +23,7 @@ class BasicTypesSerializationTest {
 
     // KeyValue Input/Output
     class KeyValueOutput(private val sb: StringBuilder) : AbstractEncoder() {
-        override val serializersModule: SerializersModule = EmptySerializersModule
+        override val serializersModule: SerializersModule = EmptySerializersModule()
 
         override fun beginStructure(descriptor: SerialDescriptor): CompositeEncoder {
             sb.append('{')
@@ -56,7 +59,7 @@ class BasicTypesSerializationTest {
     }
 
     class KeyValueInput(private val inp: Parser) : AbstractDecoder() {
-        override val serializersModule: SerializersModule = EmptySerializersModule
+        override val serializersModule: SerializersModule = EmptySerializersModule()
 
         override fun beginStructure(descriptor: SerialDescriptor): CompositeDecoder {
             inp.expectAfterWhiteSpace('{')
@@ -170,4 +173,40 @@ class BasicTypesSerializationTest {
         assertEquals(umbrellaInstance, other)
         assertNotSame(umbrellaInstance, other)
     }
+
+    @Test
+    fun testEncodeDuration() {
+        val sb = StringBuilder()
+        val out = KeyValueOutput(sb)
+
+        val duration = Duration.parseIsoString("P4DT12H30M5S")
+        out.encodeSerializableValue(Duration.serializer(), duration)
+
+        assertEquals("\"${duration.toIsoString()}\"", sb.toString())
+    }
+
+    @Test
+    fun testDecodeDuration() {
+        val durationString = "P4DT12H30M5S"
+        val inp = KeyValueInput(Parser(StringReader("\"$durationString\"")))
+        val other = inp.decodeSerializableValue(Duration.serializer())
+        assertEquals(Duration.parseIsoString(durationString), other)
+    }
+
+    @Test
+    fun testNothingSerialization() {
+        // impossible to deserialize Nothing
+        assertFailsWith(SerializationException::class, "'kotlin.Nothing' does not have instances") {
+            val inp = KeyValueInput(Parser(StringReader("42")))
+            @Suppress("IMPLICIT_NOTHING_TYPE_ARGUMENT_IN_RETURN_POSITION")
+            inp.decodeSerializableValue(NothingSerializer())
+        }
+
+        // it is possible to serialize only `null` for `Nothing?`
+        val sb = StringBuilder()
+        val out = KeyValueOutput(sb)
+        out.encodeNullableSerializableValue(NothingSerializer(), null)
+        assertEquals("null", sb.toString())
+    }
+
 }

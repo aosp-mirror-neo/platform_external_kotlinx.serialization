@@ -6,6 +6,7 @@ package kotlinx.serialization
 
 import kotlinx.serialization.descriptors.*
 import kotlinx.serialization.encoding.*
+import kotlinx.serialization.internal.EnumSerializer
 import kotlinx.serialization.test.*
 import kotlin.test.*
 
@@ -15,8 +16,7 @@ class SerializersLookupEnumTest {
     @Serializable(with = EnumExternalObjectSerializer::class)
     enum class EnumExternalObject
 
-    @Serializer(forClass = EnumExternalObject::class)
-    object EnumExternalObjectSerializer {
+    object EnumExternalObjectSerializer: KSerializer<EnumExternalObject> {
         override val descriptor: SerialDescriptor = buildSerialDescriptor("tmp", SerialKind.ENUM)
 
         override fun serialize(encoder: Encoder, value: EnumExternalObject) {
@@ -28,11 +28,10 @@ class SerializersLookupEnumTest {
         }
     }
 
-    @Serializable(with = EnumExternalClassSerializer::class)
+    @Serializable(with = EnumCustomClassSerializer::class)
     enum class EnumExternalClass
 
-    @Serializer(forClass = EnumExternalClass::class)
-    class EnumExternalClassSerializer {
+    class EnumCustomClassSerializer: KSerializer<EnumExternalClass> {
         override val descriptor: SerialDescriptor = buildSerialDescriptor("tmp", SerialKind.ENUM)
 
         override fun serialize(encoder: Encoder, value: EnumExternalClass) {
@@ -44,15 +43,36 @@ class SerializersLookupEnumTest {
         }
     }
 
-    @Polymorphic
-    enum class EnumPolymorphic
-
     @Serializable
     enum class PlainEnum
 
+    @Serializable
+    enum class SerializableEnum { C, D }
+
+    @Serializable
+    enum class SerializableMarkedEnum { C, @SerialName("NotD") D }
+
     @Test
     fun testPlainEnum() {
-        assertEquals(PlainEnum.serializer(), serializer<PlainEnum>())
+        assertSame(PlainEnum.serializer(), serializer<PlainEnum>())
+
+        if (!isJs()) {
+            assertIs<EnumSerializer<PlainEnum>>(serializer<PlainEnum>())
+        }
+    }
+
+    @Test
+    fun testSerializableEnumSerializer() {
+        assertIs<EnumSerializer<SerializableEnum>>(SerializableEnum.serializer())
+
+        assertSame(SerializableEnum.serializer(), serializer<SerializableEnum>())
+    }
+
+    @Test
+    fun testSerializableMarkedEnumSerializer() {
+        assertIs<EnumSerializer<SerializableMarkedEnum>>(SerializableMarkedEnum.serializer())
+
+        assertSame(SerializableMarkedEnum.serializer(), serializer<SerializableMarkedEnum>())
     }
 
     @Test
@@ -63,26 +83,7 @@ class SerializersLookupEnumTest {
 
     @Test
     fun testEnumExternalClass() {
-        assertIs<EnumExternalClassSerializer>(EnumExternalClass.serializer())
-
-        if (isJvm()) {
-            assertIs<EnumExternalClassSerializer>(serializer<EnumExternalClass>())
-        } else if (isJsIr() || isNative()) {
-            // FIXME serializer<EnumWithClassSerializer> is broken for K/JS and K/Native. Remove `assertFails` after fix
-            assertFails { serializer<EnumExternalClass>() }
-        }
-    }
-
-    @Test
-    fun testEnumPolymorphic() {
-        if (isJvm()) {
-            assertEquals(
-                PolymorphicSerializer(EnumPolymorphic::class).descriptor,
-                serializer<EnumPolymorphic>().descriptor
-            )
-        } else {
-            // FIXME serializer<PolymorphicEnum> is broken for K/JS and K/Native. Remove `assertFails` after fix
-            assertFails { serializer<EnumPolymorphic>() }
-        }
+        assertIs<EnumCustomClassSerializer>(EnumExternalClass.serializer())
+        assertIs<EnumCustomClassSerializer>(serializer<EnumExternalClass>())
     }
 }

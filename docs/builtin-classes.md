@@ -23,6 +23,8 @@ including the standard collections, is built into Kotlin Serialization. This cha
   * [Deserializing collections](#deserializing-collections)
   * [Maps](#maps)
   * [Unit and singleton objects](#unit-and-singleton-objects)
+  * [Duration](#duration)
+* [Nothing](#nothing)
 
 <!--- END -->
 
@@ -67,8 +69,6 @@ Their natural representation in JSON is used.
 ```
 
 <!--- TEST -->
-
-> Experimental unsigned numbers as well as other experimental inline classes are not supported by Kotlin Serialization yet. 
 
 
 ### Long numbers
@@ -165,6 +165,8 @@ In JSON an enum gets encoded as a string.
 ```text
 {"name":"kotlinx.serialization","status":"SUPPORTED"}
 ```   
+
+> Note: On Kotlin/JS and Kotlin/Native, `@Serializable` annotation is needed for enum class if you want to use it as a root object — i.e. use `encodeToString<Status>(Status.SUPPORTED)`.
 
 <!--- TEST -->
 
@@ -382,6 +384,57 @@ which is explained in the [Polymorphism. Objects](polymorphism.md#objects) secti
 
 > Serialization of objects is format specific. Other formats may represent objects differently, 
 > e.g. using their fully-qualified names.
+
+### Duration
+
+Since Kotlin `1.7.20` the [Duration] class has become serializable.
+
+<!--- INCLUDE 
+import kotlin.time.*
+-->
+
+```kotlin
+fun main() {
+    val duration = 1000.toDuration(DurationUnit.SECONDS)
+    println(Json.encodeToString(duration))
+}
+```
+> You can get the full code [here](../guide/example/example-builtin-12.kt).
+
+Duration is serialized as a string in the ISO-8601-2 format.
+```text
+"PT16M40S"
+```
+
+<!--- TEST -->
+
+
+## Nothing
+
+By default, [Nothing] is a serializable class. However, since there are no instances of this class, it is impossible to encode or decode its values - any attempt will cause an exception.
+
+This serializer is used when syntactically some type is needed, but it is not actually used in serialization. For example, when using parameterized polymorphic base classes:
+```kotlin
+@Serializable
+sealed class ParametrizedParent<out R> {
+    @Serializable
+    data class ChildWithoutParameter(val value: Int) : ParametrizedParent<Nothing>()
+}
+
+fun main() {
+    println(Json.encodeToString(ParametrizedParent.ChildWithoutParameter(42)))
+}
+``` 
+> You can get the full code [here](../guide/example/example-builtin-13.kt).
+
+When encoding, the serializer for the `Nothing` was not used
+
+```text
+{"value":42}
+```
+
+<!--- TEST -->
+
 ---
 
 The next chapter covers [Serializers](serializers.md).
@@ -394,17 +447,18 @@ The next chapter covers [Serializers](serializers.md).
 [List]: https://kotlinlang.org/api/latest/jvm/stdlib/kotlin.collections/-list/ 
 [Set]: https://kotlinlang.org/api/latest/jvm/stdlib/kotlin.collections/-set/ 
 [Map]: https://kotlinlang.org/api/latest/jvm/stdlib/kotlin.collections/-map/ 
+[Duration]: https://kotlinlang.org/api/latest/jvm/stdlib/kotlin.time/-duration/
+[Nothing]: https://kotlinlang.org/api/latest/jvm/stdlib/kotlin/-nothing.html
 
 <!--- MODULE /kotlinx-serialization-core -->
 <!--- INDEX kotlinx-serialization-core/kotlinx.serialization -->
 
-[Serializable]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization/-serializable/index.html
-[SerialName]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization/-serial-name/index.html
+[Serializable]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization/-serializable/index.html
+[SerialName]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization/-serial-name/index.html
 
 <!--- MODULE /kotlinx-serialization-core -->
 <!--- INDEX kotlinx-serialization-core/kotlinx.serialization.builtins -->
 
-[LongAsStringSerializer]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization.builtins/-long-as-string-serializer/index.html
+[LongAsStringSerializer]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization.builtins/-long-as-string-serializer/index.html
 
 <!--- END -->
- 

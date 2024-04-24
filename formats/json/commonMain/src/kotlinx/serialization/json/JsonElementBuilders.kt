@@ -5,7 +5,9 @@
 
 package kotlinx.serialization.json
 
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlin.contracts.*
+import kotlin.jvm.JvmName
 
 /**
  * Builds [JsonObject] with the given [builderAction] builder.
@@ -72,7 +74,7 @@ public class JsonObjectBuilder @PublishedApi internal constructor() {
 }
 
 /**
- * Add the [JSON][JsonObject] produced by the [builderAction] function to a resulting json object using the given [key].
+ * Add the [JSON object][JsonObject] produced by the [builderAction] function to a resulting JSON object using the given [key].
  *
  * Returns the previous value associated with [key], or `null` if the key was not present.
  */
@@ -80,7 +82,7 @@ public fun JsonObjectBuilder.putJsonObject(key: String, builderAction: JsonObjec
     put(key, buildJsonObject(builderAction))
 
 /**
- * Add the [JSON array][JsonArray] produced by the [builderAction] function to a resulting json object using the given [key].
+ * Add the [JSON array][JsonArray] produced by the [builderAction] function to a resulting JSON object using the given [key].
  *
  * Returns the previous value associated with [key], or `null` if the key was not present.
  */
@@ -109,6 +111,15 @@ public fun JsonObjectBuilder.put(key: String, value: Number?): JsonElement? = pu
 public fun JsonObjectBuilder.put(key: String, value: String?): JsonElement? = put(key, JsonPrimitive(value))
 
 /**
+ * Add `null` to a resulting JSON object using the given [key].
+ *
+ * Returns the previous value associated with [key], or `null` if the key was not present.
+ */
+@ExperimentalSerializationApi
+@Suppress("UNUSED_PARAMETER") // allows to call `put("key", null)`
+public fun JsonObjectBuilder.put(key: String, value: Nothing?): JsonElement? = put(key, JsonNull)
+
+/**
  * DSL builder for a [JsonArray]. To create an instance of builder, use [buildJsonArray] build function.
  */
 @JsonDslMarker
@@ -117,7 +128,7 @@ public class JsonArrayBuilder @PublishedApi internal constructor() {
     private val content: MutableList<JsonElement> = mutableListOf()
 
     /**
-     * Adds the given JSON [element] to a resulting array.
+     * Adds the given JSON [element] to a resulting JSON array.
      *
      * Always returns `true` similarly to [ArrayList] specification.
      */
@@ -126,33 +137,51 @@ public class JsonArrayBuilder @PublishedApi internal constructor() {
         return true
     }
 
+    /**
+     * Adds the given JSON [elements] to a resulting JSON array.
+     *
+     * @return `true` if the list was changed as the result of the operation.
+     */
+    @ExperimentalSerializationApi
+    public fun addAll(elements: Collection<JsonElement>): Boolean =
+        content.addAll(elements)
+
     @PublishedApi
     internal fun build(): JsonArray = JsonArray(content)
 }
 
 /**
- * Adds the given boolean [value] to a resulting array.
+ * Adds the given boolean [value] to a resulting JSON array.
  *
  * Always returns `true` similarly to [ArrayList] specification.
  */
 public fun JsonArrayBuilder.add(value: Boolean?): Boolean = add(JsonPrimitive(value))
 
 /**
- * Adds the given numeric [value] to a resulting array.
+ * Adds the given numeric [value] to a resulting JSON array.
  *
  * Always returns `true` similarly to [ArrayList] specification.
  */
 public fun JsonArrayBuilder.add(value: Number?): Boolean = add(JsonPrimitive(value))
 
 /**
- * Adds the given string [value] to a resulting array.
+ * Adds the given string [value] to a resulting JSON array.
  *
  * Always returns `true` similarly to [ArrayList] specification.
  */
 public fun JsonArrayBuilder.add(value: String?): Boolean = add(JsonPrimitive(value))
 
 /**
- * Adds the [JSON][JsonObject] produced by the [builderAction] function to a resulting array.
+ * Adds `null` to a resulting JSON array.
+ *
+ * Always returns `true` similarly to [ArrayList] specification.
+ */
+@ExperimentalSerializationApi
+@Suppress("UNUSED_PARAMETER") // allows to call `add(null)`
+public fun JsonArrayBuilder.add(value: Nothing?): Boolean = add(JsonNull)
+
+/**
+ * Adds the [JSON object][JsonObject] produced by the [builderAction] function to a resulting JSON array.
  *
  * Always returns `true` similarly to [ArrayList] specification.
  */
@@ -160,15 +189,42 @@ public fun JsonArrayBuilder.addJsonObject(builderAction: JsonObjectBuilder.() ->
     add(buildJsonObject(builderAction))
 
 /**
- * Adds the [JSON][JsonArray] produced by the [builderAction] function to a resulting array.
+ * Adds the [JSON array][JsonArray] produced by the [builderAction] function to a resulting JSON array.
  *
  * Always returns `true` similarly to [ArrayList] specification.
  */
 public fun JsonArrayBuilder.addJsonArray(builderAction: JsonArrayBuilder.() -> Unit): Boolean =
     add(buildJsonArray(builderAction))
 
-private const val infixToDeprecated = "Infix 'to' operator is deprecated for removal for the favour of 'add'"
-private const val unaryPlusDeprecated = "Unary plus is deprecated for removal for the favour of 'add'"
+/**
+ * Adds the given string [values] to a resulting JSON array.
+ *
+ * @return `true` if the list was changed as the result of the operation.
+ */
+@JvmName("addAllStrings")
+@ExperimentalSerializationApi
+public fun JsonArrayBuilder.addAll(values: Collection<String?>): Boolean =
+    addAll(values.map(::JsonPrimitive))
+
+/**
+ * Adds the given boolean [values] to a resulting JSON array.
+ *
+ * @return `true` if the list was changed as the result of the operation.
+ */
+@JvmName("addAllBooleans")
+@ExperimentalSerializationApi
+public fun JsonArrayBuilder.addAll(values: Collection<Boolean?>): Boolean =
+    addAll(values.map(::JsonPrimitive))
+
+/**
+ * Adds the given numeric [values] to a resulting JSON array.
+ *
+ * @return `true` if the list was changed as the result of the operation.
+ */
+@JvmName("addAllNumbers")
+@ExperimentalSerializationApi
+public fun JsonArrayBuilder.addAll(values: Collection<Number?>): Boolean =
+    addAll(values.map(::JsonPrimitive))
 
 @DslMarker
 internal annotation class JsonDslMarker

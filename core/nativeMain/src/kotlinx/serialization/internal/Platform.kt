@@ -19,9 +19,9 @@ internal actual inline fun BooleanArray.getChecked(index: Int): Boolean {
 
 internal actual fun KClass<*>.platformSpecificSerializerNotRegistered(): Nothing {
     throw SerializationException(
-        "Serializer for class '${simpleName}' is not found.\n" +
-                "Mark the class as @Serializable or provide the serializer explicitly.\n" +
-                "On Kotlin/Native explicitly declared serializer should be used for interfaces and enums without @Serializable annotation"
+        notRegisteredMessage() +
+            "To get enum serializer on Kotlin/Native, it should be annotated with @Serializable annotation.\n" +
+            "To get interface serializer on Kotlin/Native, use PolymorphicSerializer() constructor function.\n"
     )
 }
 
@@ -37,25 +37,36 @@ internal actual fun <T : Any> KClass<T>.constructSerializerForGivenTypeArgs(vara
         else -> null
     }
 
-@Suppress(
-    "UNCHECKED_CAST",
-    "DEPRECATION_ERROR"
-)
-@OptIn(ExperimentalAssociatedObjects::class)
+@Suppress("DEPRECATION_ERROR")
 internal actual fun <T : Any> KClass<T>.compiledSerializerImpl(): KSerializer<T>? =
     this.constructSerializerForGivenTypeArgs()
+
+
+internal actual fun <T> createCache(factory: (KClass<*>) -> KSerializer<T>?): SerializerCache<T> {
+    return object: SerializerCache<T> {
+        override fun get(key: KClass<Any>): KSerializer<T>? {
+            return factory(key)
+        }
+    }
+}
+
+internal actual fun <T> createParametrizedCache(factory: (KClass<Any>, List<KType>) -> KSerializer<T>?): ParametrizedSerializerCache<T> {
+    return object: ParametrizedSerializerCache<T> {
+        override fun get(key: KClass<Any>, types: List<KType>): Result<KSerializer<T>?> {
+            return kotlin.runCatching { factory(key, types) }
+        }
+    }
+}
 
 internal actual fun <T : Any, E : T?> ArrayList<E>.toNativeArrayImpl(eClass: KClass<T>): Array<E> {
     val result = arrayOfAnyNulls<E>(size)
     var index = 0
     for (element in this) result[index++] = element
-    @Suppress("UNCHECKED_CAST", "USELESS_CAST")
+    @Suppress("USELESS_CAST")
     return result as Array<E>
 }
 
 @Suppress("UNCHECKED_CAST")
 private fun <T> arrayOfAnyNulls(size: Int): Array<T> = arrayOfNulls<Any>(size) as Array<T>
-
-internal actual fun Any.isInstanceOf(kclass: KClass<*>): Boolean = kclass.isInstance(this)
 
 internal actual fun isReferenceArray(rootClass: KClass<Any>): Boolean = rootClass == Array::class

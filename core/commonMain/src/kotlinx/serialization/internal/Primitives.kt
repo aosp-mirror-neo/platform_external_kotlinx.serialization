@@ -13,8 +13,9 @@ import kotlinx.serialization.descriptors.*
 import kotlinx.serialization.encoding.*
 import kotlin.native.concurrent.*
 import kotlin.reflect.*
+import kotlin.time.Duration
 
-@SharedImmutable
+@OptIn(ExperimentalUnsignedTypes::class)
 private val BUILTIN_SERIALIZERS = mapOf(
     String::class to String.serializer(),
     Char::class to Char.serializer(),
@@ -25,15 +26,25 @@ private val BUILTIN_SERIALIZERS = mapOf(
     FloatArray::class to FloatArraySerializer(),
     Long::class to Long.serializer(),
     LongArray::class to LongArraySerializer(),
+    ULong::class to ULong.serializer(),
+    ULongArray::class to ULongArraySerializer(),
     Int::class to Int.serializer(),
     IntArray::class to IntArraySerializer(),
+    UInt::class to UInt.serializer(),
+    UIntArray::class to UIntArraySerializer(),
     Short::class to Short.serializer(),
     ShortArray::class to ShortArraySerializer(),
+    UShort::class to UShort.serializer(),
+    UShortArray::class to UShortArraySerializer(),
     Byte::class to Byte.serializer(),
     ByteArray::class to ByteArraySerializer(),
+    UByte::class to UByte.serializer(),
+    UByteArray::class to UByteArraySerializer(),
     Boolean::class to Boolean.serializer(),
     BooleanArray::class to BooleanArraySerializer(),
-    Unit::class to Unit.serializer()
+    Unit::class to Unit.serializer(),
+    Nothing::class to NothingSerializer(),
+    Duration::class to Duration.serializer()
 )
 
 internal class PrimitiveSerialDescriptor(
@@ -47,6 +58,13 @@ internal class PrimitiveSerialDescriptor(
     override fun getElementDescriptor(index: Int): SerialDescriptor = error()
     override fun getElementAnnotations(index: Int): List<Annotation> = error()
     override fun toString(): String = "PrimitiveDescriptor($serialName)"
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other !is PrimitiveSerialDescriptor) return false
+        if (serialName == other.serialName && kind == other.kind) return true
+        return false
+    }
+    override fun hashCode() = serialName.hashCode() + 31 * kind.hashCode()
     private fun error(): Nothing = throw IllegalStateException("Primitive descriptor does not have elements")
 }
 

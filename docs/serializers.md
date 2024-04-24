@@ -24,7 +24,9 @@ In this chapter we'll take a look at serializers in more detail, and we'll see h
   * [Serializing 3rd party classes](#serializing-3rd-party-classes)
   * [Passing a serializer manually](#passing-a-serializer-manually)
   * [Specifying serializer on a property](#specifying-serializer-on-a-property)
+  * [Specifying serializer for a particular type](#specifying-serializer-for-a-particular-type)
   * [Specifying serializers for a file](#specifying-serializers-for-a-file)
+  * [Specifying serializer globally using typealias](#specifying-serializer-globally-using-typealias)
   * [Custom serializers for a generic type](#custom-serializers-for-a-generic-type)
   * [Format-specific serializers](#format-specific-serializers)
 * [Contextual serialization](#contextual-serialization)
@@ -712,7 +714,7 @@ because we don't control the `Date` source code. There are several ways to work 
 ### Passing a serializer manually
  
 All `encodeToXxx` and `decodeFromXxx` functions have an overload with the first serializer parameter. 
-When a non-serializable class, like `Date`, is the top-level class being serialized we can use those.
+When a non-serializable class, like `Date`, is the top-level class being serialized, we can use those.
 
 ```kotlin
 fun main() {                                              
@@ -769,6 +771,45 @@ The `stableReleaseDate` property is serialized with the serialization strategy t
 
 <!--- TEST -->
 
+### Specifying serializer for a particular type
+
+[`@Serializable`][Serializable] annotation can also be applied directly to the types. 
+This is handy when a class that requires a custom serializer, such as `Date`, happens to be a generic type argument.
+The most common use case for that is when you have a list of dates:
+
+<!--- INCLUDE 
+import java.util.Date
+import java.text.SimpleDateFormat
+  
+object DateAsLongSerializer : KSerializer<Date> {
+    override val descriptor: SerialDescriptor = PrimitiveSerialDescriptor("Date", PrimitiveKind.LONG)
+    override fun serialize(encoder: Encoder, value: Date) = encoder.encodeLong(value.time)
+    override fun deserialize(decoder: Decoder): Date = Date(decoder.decodeLong())
+}
+-->
+
+```kotlin
+@Serializable          
+class ProgrammingLanguage(
+    val name: String,
+    val releaseDates: List<@Serializable(DateAsLongSerializer::class) Date>
+)
+
+fun main() {
+    val df = SimpleDateFormat("yyyy-MM-ddX")
+    val data = ProgrammingLanguage("Kotlin", listOf(df.parse("2023-07-06+00"), df.parse("2023-04-25+00"), df.parse("2022-12-28+00")))
+    println(Json.encodeToString(data))
+}
+```
+
+> You can get the full code [here](../guide/example/example-serializer-16.kt).
+
+```text
+{"name":"Kotlin","releaseDates":[1688601600000,1682380800000,1672185600000]}
+```   
+
+<!--- TEST -->
+
 ### Specifying serializers for a file 
 
 A serializer for a specific type, like `Date`, can be specified for a whole source code file with the file-level
@@ -802,13 +843,67 @@ fun main() {
     println(Json.encodeToString(data))
 }
 ```   
-> You can get the full code [here](../guide/example/example-serializer-16.kt).
+> You can get the full code [here](../guide/example/example-serializer-17.kt).
 
 ```text
 {"name":"Kotlin","stableReleaseDate":1455494400000}
 ```
 
 <!--- TEST --> 
+
+### Specifying serializer globally using typealias
+
+kotlinx.serialization tends to be the always-explicit framework when it comes to serialization strategies: normally,
+they should be explicitly mentioned in `@Serializable` annotation. Therefore, we do not provide any kind of global serializer
+configuration (except for [context serializer](#contextual-serialization) mentioned later).
+
+However, in projects with a large number of files and classes, it may be too cumbersome to specify `@file:UseSerializers`
+every time, especially for classes like `Date` or `Instant` that have a fixed strategy of serialization across the project.
+For such cases, it is possible to specify serializers using `typealias`es, as they preserve annotations, including serialization-related ones:
+<!--- INCLUDE
+import java.util.Date
+import java.text.SimpleDateFormat
+  
+object DateAsLongSerializer : KSerializer<Date> {
+    override val descriptor: SerialDescriptor = PrimitiveSerialDescriptor("DateAsLong", PrimitiveKind.LONG)
+    override fun serialize(encoder: Encoder, value: Date) = encoder.encodeLong(value.time)
+    override fun deserialize(decoder: Decoder): Date = Date(decoder.decodeLong())
+}
+
+object DateAsSimpleTextSerializer: KSerializer<Date> {
+    override val descriptor: SerialDescriptor = PrimitiveSerialDescriptor("DateAsSimpleText", PrimitiveKind.LONG)
+    private val format = SimpleDateFormat("yyyy-MM-dd")
+    override fun serialize(encoder: Encoder, value: Date) = encoder.encodeString(format.format(value))
+    override fun deserialize(decoder: Decoder): Date = format.parse(decoder.decodeString())
+}
+-->
+
+```kotlin
+typealias DateAsLong = @Serializable(DateAsLongSerializer::class) Date
+
+typealias DateAsText = @Serializable(DateAsSimpleTextSerializer::class) Date
+```
+
+Using these new different types, it is possible to serialize a Date differently without additional annotations:
+
+```kotlin
+@Serializable          
+class ProgrammingLanguage(val stableReleaseDate: DateAsText, val lastReleaseTimestamp: DateAsLong)
+
+fun main() {
+    val format = SimpleDateFormat("yyyy-MM-ddX")
+    val data = ProgrammingLanguage(format.parse("2016-02-15+00"), format.parse("2022-07-07+00"))
+    println(Json.encodeToString(data))
+}
+```
+
+> You can get the full code [here](../guide/example/example-serializer-18.kt).
+
+```text
+{"stableReleaseDate":"2016-02-15","lastReleaseTimestamp":1657152000000}
+```
+
+<!--- TEST -->
 
 ### Custom serializers for a generic type
 
@@ -850,7 +945,7 @@ fun main() {
 }
 ```
 
-> You can get the full code [here](../guide/example/example-serializer-17.kt).
+> You can get the full code [here](../guide/example/example-serializer-19.kt).
 
 The resulting JSON looks like the `Project` class was serialized directly.
 
@@ -914,11 +1009,11 @@ fun main() {
 To actually serialize this class we must provide the corresponding context when calling the `encodeToXxx`/`decodeFromXxx`
 functions. Without it we'll get a "Serializer for class 'Date' is not found" exception.
 
-> See [here](../guide/example/example-serializer-18.kt) for an example that produces that exception.
+> See [here](../guide/example/example-serializer-20.kt) for an example that produces that exception.
  
 <!--- TEST LINES_START 
 Exception in thread "main" kotlinx.serialization.SerializationException: Serializer for class 'Date' is not found.
-Mark the class as @Serializable or provide the serializer explicitly.
+Please ensure that class is marked as '@Serializable' and that the serialization compiler plugin is applied.
 -->
 
 <!--- INCLUDE
@@ -973,7 +1068,7 @@ fun main() {
 }
 ```
 
-> You can get the full code [here](../guide/example/example-serializer-19.kt).
+> You can get the full code [here](../guide/example/example-serializer-21.kt).
 ```text
 {"name":"Kotlin","stableReleaseDate":1455494400000}
 ```
@@ -1032,7 +1127,7 @@ fun main() {
 }
 ```          
 
-> You can get the full code [here](../guide/example/example-serializer-20.kt).
+> You can get the full code [here](../guide/example/example-serializer-22.kt).
 
 This gets all the `Project` properties serialized:
 
@@ -1073,7 +1168,7 @@ fun main() {
 }
 ```             
 
-> You can get the full code [here](../guide/example/example-serializer-21.kt).
+> You can get the full code [here](../guide/example/example-serializer-23.kt).
 
 The output is shown below.
 
@@ -1093,66 +1188,66 @@ The next chapter covers [Polymorphism](polymorphism.md).
 <!--- MODULE /kotlinx-serialization-core -->
 <!--- INDEX kotlinx-serialization-core/kotlinx.serialization -->
 
-[Serializable]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization/-serializable/index.html
-[KSerializer]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization/-k-serializer/index.html
-[KSerializer.descriptor]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization/-k-serializer/descriptor.html
-[SerializationStrategy.serialize]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization/-serialization-strategy/serialize.html
-[SerializationStrategy]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization/-serialization-strategy/index.html
-[DeserializationStrategy.deserialize]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization/-deserialization-strategy/deserialize.html
-[DeserializationStrategy]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization/-deserialization-strategy/index.html
-[Serializable.with]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization/-serializable/with.html
-[SerialName]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization/-serial-name/index.html
-[UseSerializers]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization/-use-serializers/index.html
-[ContextualSerializer]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization/-contextual-serializer/index.html
-[Contextual]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization/-contextual/index.html
-[UseContextualSerialization]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization/-use-contextual-serialization/index.html
-[Serializer]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization/-serializer/index.html
-[Serializer.forClass]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization/-serializer/for-class.html
+[Serializable]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization/-serializable/index.html
+[KSerializer]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization/-k-serializer/index.html
+[KSerializer.descriptor]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization/-k-serializer/descriptor.html
+[SerializationStrategy.serialize]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization/-serialization-strategy/serialize.html
+[SerializationStrategy]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization/-serialization-strategy/index.html
+[DeserializationStrategy.deserialize]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization/-deserialization-strategy/deserialize.html
+[DeserializationStrategy]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization/-deserialization-strategy/index.html
+[Serializable.with]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization/-serializable/with.html
+[SerialName]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization/-serial-name/index.html
+[UseSerializers]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization/-use-serializers/index.html
+[ContextualSerializer]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization/-contextual-serializer/index.html
+[Contextual]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization/-contextual/index.html
+[UseContextualSerialization]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization/-use-contextual-serialization/index.html
+[Serializer]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization/-serializer/index.html
+[Serializer.forClass]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization/-serializer/for-class.html
 
 <!--- INDEX kotlinx-serialization-core/kotlinx.serialization.builtins -->
 
-[ListSerializer()]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization.builtins/-list-serializer.html
-[SetSerializer()]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization.builtins/-set-serializer.html
-[MapSerializer()]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization.builtins/-map-serializer.html
+[ListSerializer()]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization.builtins/-list-serializer.html
+[SetSerializer()]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization.builtins/-set-serializer.html
+[MapSerializer()]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization.builtins/-map-serializer.html
 
 <!--- INDEX kotlinx-serialization-core/kotlinx.serialization.encoding -->
 
-[Encoder]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization.encoding/-encoder/index.html
-[Encoder.encodeString]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization.encoding/-encoder/encode-string.html
-[Decoder]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization.encoding/-decoder/index.html
-[Decoder.decodeString]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization.encoding/-decoder/decode-string.html
-[Encoder.encodeSerializableValue]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization.encoding/-encoder/encode-serializable-value.html
-[Decoder.decodeSerializableValue]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization.encoding/-decoder/decode-serializable-value.html
-[encodeStructure]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization.encoding/encode-structure.html
-[CompositeEncoder]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization.encoding/-composite-encoder/index.html
-[decodeStructure]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization.encoding/decode-structure.html
-[CompositeDecoder]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization.encoding/-composite-decoder/index.html
-[CompositeDecoder.decodeElementIndex]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization.encoding/-composite-decoder/decode-element-index.html
-[CompositeDecoder.decodeIntElement]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization.encoding/-composite-decoder/decode-int-element.html
-[CompositeDecoder.decodeSequentially]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization.encoding/-composite-decoder/decode-sequentially.html
+[Encoder]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization.encoding/-encoder/index.html
+[Encoder.encodeString]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization.encoding/-encoder/encode-string.html
+[Decoder]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization.encoding/-decoder/index.html
+[Decoder.decodeString]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization.encoding/-decoder/decode-string.html
+[Encoder.encodeSerializableValue]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization.encoding/-encoder/encode-serializable-value.html
+[Decoder.decodeSerializableValue]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization.encoding/-decoder/decode-serializable-value.html
+[encodeStructure]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization.encoding/encode-structure.html
+[CompositeEncoder]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization.encoding/-composite-encoder/index.html
+[decodeStructure]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization.encoding/decode-structure.html
+[CompositeDecoder]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization.encoding/-composite-decoder/index.html
+[CompositeDecoder.decodeElementIndex]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization.encoding/-composite-decoder/decode-element-index.html
+[CompositeDecoder.decodeIntElement]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization.encoding/-composite-decoder/decode-int-element.html
+[CompositeDecoder.decodeSequentially]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization.encoding/-composite-decoder/decode-sequentially.html
 
 <!--- INDEX kotlinx-serialization-core/kotlinx.serialization.descriptors -->
 
-[PrimitiveSerialDescriptor()]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization.descriptors/-primitive-serial-descriptor.html
-[PrimitiveKind]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization.descriptors/-primitive-kind/index.html
-[SerialDescriptor]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization.descriptors/-serial-descriptor/index.html
-[buildClassSerialDescriptor]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization.descriptors/build-class-serial-descriptor.html
-[ClassSerialDescriptorBuilder.element]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization.descriptors/element.html
-[SerialKind]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization.descriptors/-serial-kind/index.html
+[PrimitiveSerialDescriptor()]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization.descriptors/-primitive-serial-descriptor.html
+[PrimitiveKind]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization.descriptors/-primitive-kind/index.html
+[SerialDescriptor]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization.descriptors/-serial-descriptor/index.html
+[buildClassSerialDescriptor]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization.descriptors/build-class-serial-descriptor.html
+[ClassSerialDescriptorBuilder.element]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization.descriptors/element.html
+[SerialKind]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization.descriptors/-serial-kind/index.html
 
 <!--- INDEX kotlinx-serialization-core/kotlinx.serialization.modules -->
 
-[SerializersModule]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization.modules/-serializers-module/index.html
-[SerializersModule()]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization.modules/-serializers-module.html
-[SerializersModuleBuilder]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization.modules/-serializers-module-builder/index.html
-[_contextual]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization.modules/contextual.html
+[SerializersModule]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization.modules/-serializers-module/index.html
+[SerializersModule()]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization.modules/-serializers-module.html
+[SerializersModuleBuilder]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization.modules/-serializers-module-builder/index.html
+[_contextual]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization.modules/contextual.html
 
 <!--- MODULE /kotlinx-serialization-json -->
 <!--- INDEX kotlinx-serialization-json/kotlinx.serialization.json -->
 
-[Json]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/-json/index.html
-[Json()]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/-json.html
-[JsonBuilder.serializersModule]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/-json-builder/serializers-module.html
+[Json]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/-json/index.html
+[Json()]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/-json.html
+[JsonBuilder.serializersModule]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/-json-builder/serializers-module.html
 
 <!--- END -->
 

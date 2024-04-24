@@ -6,6 +6,10 @@ java_library {
     common_srcs: ["core/commonMain/src/kotlinx/serialization/**/*.kt"],
     kotlincflags: [
         "-Xmulti-platform",
+        "-Xexpect-actual-classes",
+        "-opt-in=kotlin.ExperimentalStdlibApi",
+        "-opt-in=kotlin.ExperimentalMultiplatform",
+        "-opt-in=kotlinx.serialization.internal.CoreFriendModuleApi",
         "-opt-in=kotlinx.serialization.ExperimentalSerializationApi",
         "-opt-in=kotlinx.serialization.InternalSerializationApi",
     ],
@@ -23,6 +27,11 @@ java_library {
     common_srcs: ["formats/json/commonMain/src/kotlinx/serialization/**/*.kt"],
     kotlincflags: [
         "-Xmulti-platform",
+        "-Xexpect-actual-classes",
+        "-opt-in=kotlin.ExperimentalStdlibApi",
+        "-opt-in=kotlin.ExperimentalMultiplatform",
+        "-opt-in=kotlinx.serialization.internal.CoreFriendModuleApi",
+        "-opt-in=kotlinx.serialization.json.internal.JsonFriendModuleApi",
         "-opt-in=kotlinx.serialization.ExperimentalSerializationApi",
         "-opt-in=kotlinx.serialization.InternalSerializationApi",
     ],

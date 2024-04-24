@@ -1,3 +1,5 @@
+import static KotlinVersion.isKotlinVersionAtLeast
+
 /*
  * Copyright 2017-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license.
  */
@@ -7,26 +9,50 @@ apply plugin: 'kotlinx-serialization'
 apply from: rootProject.file("gradle/native-targets.gradle")
 apply from: rootProject.file("gradle/configure-source-sets.gradle")
 
-kotlin {
+// disable kover tasks because there are no tests in the project
+tasks.named("koverHtmlReport") {
+    enabled = false
+}
+tasks.named("koverXmlReport") {
+    enabled = false
+}
+tasks.named("koverVerify") {
+    enabled = false
+}
 
+kotlin {
     sourceSets {
+        configureEach {
+            languageSettings {
+                optIn("kotlinx.serialization.internal.CoreFriendModuleApi")
+                optIn("kotlinx.serialization.json.internal.JsonFriendModuleApi")
+            }
+        }
         commonMain {
             dependencies {
                 api project(":kotlinx-serialization-core")
             }
         }
-
-        jvmTest {
-            dependencies {
-                implementation 'com.google.code.gson:gson:2.8.5'
-                implementation "org.jetbrains.kotlinx:kotlinx-coroutines-core:$coroutines_version"
-            }
+        jsWasmMain {
+            dependsOn(sourceSets.commonMain)
+        }
+        jsMain {
+            dependsOn(sourceSets.jsWasmMain)
+        }
+        wasmJsMain {
+            dependsOn(sourceSets.jsWasmMain)
+        }
+        wasmWasiMain {
+            dependsOn(sourceSets.jsWasmMain)
         }
     }
 }
 
-compileTestKotlinJsLegacy {
-    exclude '**/PropertyInitializerTest.kt'
-}
-
 Java9Modularity.configureJava9ModuleInfo(project)
+
+// This task should be disabled because of no need to build and publish intermediate JsWasm sourceset
+tasks.whenTaskAdded { task ->
+    if (task.name == 'compileJsWasmMainKotlinMetadata') {
+        task.enabled = false
+    }
+}

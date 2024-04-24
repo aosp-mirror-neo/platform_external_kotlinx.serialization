@@ -1,3 +1,5 @@
+import org.jetbrains.kotlin.gradle.tasks.Kotlin2JsCompile
+
 /*
  * Copyright 2017-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license.
  */
@@ -25,7 +27,7 @@ kotlin {
  These manifest values help kotlinx.serialization compiler plugin determine if it is compatible with a given runtime library.
  Plugin reads them during compilation.
 
- Implementation-Version is used to determine whether runtime library supports a given plugin feature (e.g. inline classes serialization
+ Implementation-Version is used to determine whether runtime library supports a given plugin feature (e.g. value classes serialization
  in Kotlin 1.x may require runtime library version 1.y to work).
  Compiler plugin may enable or disable features by looking on Implementation-Version.
 
@@ -35,6 +37,26 @@ kotlin {
  to reject runtime if runtime's Require-Kotlin-Version is greater then the current compiler.
  */
 tasks.withType(Jar).named(kotlin.jvm().artifactsTaskName) {
+
+    // adding the ProGuard rules to the jar
+    from(rootProject.file("rules/common.pro")) {
+        rename { "kotlinx-serialization-common.pro" }
+        into("META-INF/proguard")
+    }
+    from(rootProject.file("rules/common.pro")) {
+        rename { "kotlinx-serialization-common.pro" }
+        into("META-INF/com.android.tools/proguard")
+    }
+    from(rootProject.file("rules/common.pro")) {
+        rename { "kotlinx-serialization-common.pro" }
+        into("META-INF/com.android.tools/r8")
+    }
+    from(rootProject.file("rules/r8.pro")) {
+        rename { "kotlinx-serialization-r8.pro" }
+        into("META-INF/com.android.tools/r8")
+    }
+
+
     manifest {
         attributes(
                 "Implementation-Version": version,
@@ -44,3 +66,7 @@ tasks.withType(Jar).named(kotlin.jvm().artifactsTaskName) {
 }
 
 Java9Modularity.configureJava9ModuleInfo(project)
+
+tasks.withType(org.jetbrains.kotlin.gradle.targets.js.ir.KotlinJsIrLink.class).configureEach {
+    kotlinOptions.freeCompilerArgs += "-Xwasm-enable-array-range-checks"
+}

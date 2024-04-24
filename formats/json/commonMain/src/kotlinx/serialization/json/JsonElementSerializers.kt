@@ -13,8 +13,8 @@ import kotlinx.serialization.encoding.*
 import kotlinx.serialization.json.internal.JsonDecodingException
 
 /**
- * External [Serializer] object providing [SerializationStrategy] and [DeserializationStrategy] for [JsonElement].
- * It can only be used by with [Json] format an its input ([JsonDecoder] and [JsonEncoder]).
+ * Serializer object providing [SerializationStrategy] and [DeserializationStrategy] for [JsonElement].
+ * It can only be used by with [Json] format and its input ([JsonDecoder] and [JsonEncoder]).
  * Currently, this hierarchy has no guarantees on descriptor content.
  *
  * Example usage:
@@ -24,7 +24,6 @@ import kotlinx.serialization.json.internal.JsonDecodingException
  * assertEquals(JsonObject(mapOf("key" to JsonLiteral(1.0))), literal)
  * ```
  */
-@Serializer(forClass = JsonElement::class)
 @PublishedApi
 internal object JsonElementSerializer : KSerializer<JsonElement> {
     override val descriptor: SerialDescriptor =
@@ -53,10 +52,9 @@ internal object JsonElementSerializer : KSerializer<JsonElement> {
 }
 
 /**
- * External [Serializer] object providing [SerializationStrategy] and [DeserializationStrategy] for [JsonPrimitive].
+ * Serializer object providing [SerializationStrategy] and [DeserializationStrategy] for [JsonPrimitive].
  * It can only be used by with [Json] format an its input ([JsonDecoder] and [JsonEncoder]).
  */
-@Serializer(forClass = JsonPrimitive::class)
 @PublishedApi
 internal object JsonPrimitiveSerializer : KSerializer<JsonPrimitive> {
     override val descriptor: SerialDescriptor =
@@ -79,10 +77,9 @@ internal object JsonPrimitiveSerializer : KSerializer<JsonPrimitive> {
 }
 
 /**
- * External [Serializer] object providing [SerializationStrategy] and [DeserializationStrategy] for [JsonNull].
+ * Serializer object providing [SerializationStrategy] and [DeserializationStrategy] for [JsonNull].
  * It can only be used by with [Json] format an its input ([JsonDecoder] and [JsonEncoder]).
  */
-@Serializer(forClass = JsonNull::class)
 @PublishedApi
 internal object JsonNullSerializer : KSerializer<JsonNull> {
     // technically, JsonNull is an object, but it does not call beginStructure/endStructure at all
@@ -109,14 +106,20 @@ private object JsonLiteralSerializer : KSerializer<JsonLiteral> {
     override val descriptor: SerialDescriptor =
         PrimitiveSerialDescriptor("kotlinx.serialization.json.JsonLiteral", PrimitiveKind.STRING)
 
-    @OptIn(ExperimentalUnsignedTypes::class, ExperimentalSerializationApi::class)
+    @OptIn(ExperimentalSerializationApi::class)
     override fun serialize(encoder: Encoder, value: JsonLiteral) {
         verify(encoder)
         if (value.isString) {
             return encoder.encodeString(value.content)
         }
 
-        value.longOrNull?.let { return encoder.encodeLong(it) }
+        if (value.coerceToInlineType != null) {
+            return encoder.encodeInline(value.coerceToInlineType).encodeString(value.content)
+        }
+
+        // use .content instead of .longOrNull as latter can process exponential notation,
+        // and it should be delegated to double when encoding.
+        value.content.toLongOrNull()?.let { return encoder.encodeLong(it) }
 
         // most unsigned values fit to .longOrNull, but not ULong
         value.content.toULongOrNull()?.let {
@@ -124,8 +127,8 @@ private object JsonLiteralSerializer : KSerializer<JsonLiteral> {
             return
         }
 
-        value.doubleOrNull?.let { return encoder.encodeDouble(it) }
-        value.booleanOrNull?.let { return encoder.encodeBoolean(it) }
+        value.content.toDoubleOrNull()?.let { return encoder.encodeDouble(it) }
+        value.content.toBooleanStrictOrNull()?.let { return encoder.encodeBoolean(it) }
 
         encoder.encodeString(value.content)
     }
@@ -138,10 +141,9 @@ private object JsonLiteralSerializer : KSerializer<JsonLiteral> {
 }
 
 /**
- * External [Serializer] object providing [SerializationStrategy] and [DeserializationStrategy] for [JsonObject].
+ * Serializer object providing [SerializationStrategy] and [DeserializationStrategy] for [JsonObject].
  * It can only be used by with [Json] format an its input ([JsonDecoder] and [JsonEncoder]).
  */
-@Serializer(forClass = JsonObject::class)
 @PublishedApi
 internal object JsonObjectSerializer : KSerializer<JsonObject> {
 
@@ -164,10 +166,9 @@ internal object JsonObjectSerializer : KSerializer<JsonObject> {
 }
 
 /**
- * External [Serializer] object providing [SerializationStrategy] and [DeserializationStrategy] for [JsonArray].
+ * Serializer object providing [SerializationStrategy] and [DeserializationStrategy] for [JsonArray].
  * It can only be used by with [Json] format an its input ([JsonDecoder] and [JsonEncoder]).
  */
-@Serializer(forClass = JsonArray::class)
 @PublishedApi
 internal object JsonArraySerializer : KSerializer<JsonArray> {
 

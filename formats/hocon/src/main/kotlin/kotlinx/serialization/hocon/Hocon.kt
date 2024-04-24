@@ -6,11 +6,16 @@ package kotlinx.serialization.hocon
 
 import com.typesafe.config.*
 import kotlinx.serialization.*
+import kotlinx.serialization.builtins.*
 import kotlinx.serialization.descriptors.*
 import kotlinx.serialization.encoding.*
 import kotlinx.serialization.encoding.CompositeDecoder.Companion.DECODE_DONE
+import kotlinx.serialization.hocon.internal.SuppressAnimalSniffer
+import kotlinx.serialization.hocon.internal.*
+import kotlinx.serialization.hocon.serializers.*
 import kotlinx.serialization.internal.*
 import kotlinx.serialization.modules.*
+import kotlin.time.*
 
 /**
  * Allows [deserialization][decodeFromConfig]
@@ -18,6 +23,24 @@ import kotlinx.serialization.modules.*
  *
  * [Config] object represents "Human-Optimized Config Object Notation" —
  * [HOCON][https://github.com/lightbend/config#using-hocon-the-json-superset].
+ *
+ * [Duration] objects are encoded/decoded using "HOCON duration format" -
+ * [Duration format][https://github.com/lightbend/config/blob/main/HOCON.md#duration-format]
+ * [Duration] objects encoded using time unit short names: d, h, m, s, ms, us, ns.
+ * Encoding use the largest time unit.
+ * Example:
+ *      120.seconds -> 2 m
+ *      121.seconds -> 121 s
+ *      120.minutes -> 2 h
+ *      122.minutes -> 122 m
+ *      24.hours -> 1 d
+ * All restrictions on the maximum and minimum duration are specified in [Duration].
+ *
+ * It is also possible to encode and decode [java.time.Duration] and [com.typesafe.config.ConfigMemorySize]
+ * with provided serializers: [JavaDurationSerializer] and [ConfigMemorySizeSerializer].
+ * Because these types are not @[Serializable] by default,
+ * one has to apply these serializers manually — either via @Serializable(with=...) / @file:UseSerializers
+ * or using [Contextual] and [SerializersModule] mechanisms.
  *
  * @param [useConfigNamingConvention] switches naming resolution to config naming convention (hyphen separated).
  * @param serializersModule A [SerializersModule] which should contain registered serializers
@@ -62,9 +85,9 @@ public sealed class Hocon(
      * The default instance of Hocon parser.
      */
     @ExperimentalSerializationApi
-    public companion object Default : Hocon(false, false, false, "type", EmptySerializersModule)
+    public companion object Default : Hocon(false, false, false, "type", EmptySerializersModule())
 
-    private abstract inner class ConfigConverter<T> : TaggedDecoder<T>() {
+    private abstract inner class ConfigConverter<T> : TaggedDecoder<T>(), HoconDecoder {
         override val serializersModule: SerializersModule
             get() = this@Hocon.serializersModule
 
@@ -85,6 +108,14 @@ public sealed class Hocon(
         }
 
         private fun getTaggedNumber(tag: T) = validateAndCast<Number>(tag)
+
+        @Suppress("UNCHECKED_CAST")
+        protected fun <E> decodeDuration(tag: T): E =
+            getValueFromTaggedConfig(tag, ::decodeDurationImpl) as E
+
+        @SuppressAnimalSniffer
+        private fun decodeDurationImpl(conf: Config, path: String): Duration =
+            conf.decodeJavaDuration(path).toKotlinDuration()
 
         override fun decodeTaggedString(tag: T) = validateAndCast<String>(tag)
 
@@ -110,9 +141,13 @@ public sealed class Hocon(
             val s = validateAndCast<String>(tag)
             return enumDescriptor.getElementIndexOrThrow(s)
         }
+
+        override fun <E> decodeConfigValue(extractValueAtPath: (Config, String) -> E): E =
+            getValueFromTaggedConfig(currentTag, extractValueAtPath)
+
     }
 
-    private inner class ConfigReader(val conf: Config) : ConfigConverter<String>() {
+    private inner class ConfigReader(val conf: Config, private val isPolymorphic: Boolean = false) : ConfigConverter<String>() {
         private var ind = -1
 
         override fun decodeElementIndex(descriptor: SerialDescriptor): Int {
@@ -128,8 +163,10 @@ public sealed class Hocon(
         private fun composeName(parentName: String, childName: String) =
             if (parentName.isEmpty()) childName else "$parentName.$childName"
 
-        override fun SerialDescriptor.getTag(index: Int): String =
-            composeName(currentTagOrNull.orEmpty(), getConventionElementName(index, useConfigNamingConvention))
+        override fun SerialDescriptor.getTag(index: Int): String {
+            val conventionName = getConventionElementName(index, useConfigNamingConvention)
+            return if (!isPolymorphic) composeName(currentTagOrNull.orEmpty(), conventionName) else conventionName
+        }
 
         override fun decodeNotNullMark(): Boolean {
             // Tag might be null for top-level deserialization
@@ -138,19 +175,21 @@ public sealed class Hocon(
         }
 
         override fun <T> decodeSerializableValue(deserializer: DeserializationStrategy<T>): T {
-            if (deserializer !is AbstractPolymorphicSerializer<*> || useArrayPolymorphism) {
-                return deserializer.deserialize(this)
+            return when {
+                deserializer.descriptor.isDuration -> decodeDuration(currentTag)
+                deserializer !is AbstractPolymorphicSerializer<*> || useArrayPolymorphism -> deserializer.deserialize(this)
+                else -> {
+                    val config = if (currentTagOrNull != null) conf.getConfig(currentTag) else conf
+
+                    val reader = ConfigReader(config)
+                    val type = reader.decodeTaggedString(classDiscriminator)
+                    val actualSerializer = deserializer.findPolymorphicSerializerOrNull(reader, type)
+                        ?: throw SerializerNotFoundException(type)
+
+                    @Suppress("UNCHECKED_CAST")
+                    (actualSerializer as DeserializationStrategy<T>).deserialize(reader)
+                }
             }
-
-            val config = if (currentTagOrNull != null) conf.getConfig(currentTag) else conf
-
-            val reader = ConfigReader(config)
-            val type = reader.decodeTaggedString(classDiscriminator)
-            val actualSerializer = deserializer.findPolymorphicSerializerOrNull(reader, type)
-                ?: throw SerializerNotFoundException(type)
-
-            @Suppress("UNCHECKED_CAST")
-            return (actualSerializer as DeserializationStrategy<T>).deserialize(reader)
         }
 
         override fun beginStructure(descriptor: SerialDescriptor): CompositeDecoder {
@@ -171,11 +210,38 @@ public sealed class Hocon(
         }
     }
 
-    private inner class ListConfigReader(private val list: ConfigList) : ConfigConverter<Int>() {
+    private inner class PolymorphConfigReader(private val conf: Config) : ConfigConverter<String>() {
         private var ind = -1
 
         override fun beginStructure(descriptor: SerialDescriptor): CompositeDecoder =
             when {
+                descriptor.kind.objLike -> ConfigReader(conf, isPolymorphic = true)
+                else -> this
+            }
+
+        override fun SerialDescriptor.getTag(index: Int): String = getElementName(index)
+
+        override fun decodeElementIndex(descriptor: SerialDescriptor): Int {
+            ind++
+            return if (ind >= descriptor.elementsCount) DECODE_DONE else ind
+        }
+
+        override fun <E> getValueFromTaggedConfig(tag: String, valueResolver: (Config, String) -> E): E {
+            return valueResolver(conf, tag)
+        }
+    }
+
+    private inner class ListConfigReader(private val list: ConfigList) : ConfigConverter<Int>() {
+        private var ind = -1
+
+        override fun <T> decodeSerializableValue(deserializer: DeserializationStrategy<T>): T = when {
+            deserializer.descriptor.isDuration -> decodeDuration(ind)
+            else -> super.decodeSerializableValue(deserializer)
+        }
+
+        override fun beginStructure(descriptor: SerialDescriptor): CompositeDecoder =
+            when {
+                descriptor.kind is PolymorphicKind -> PolymorphConfigReader((list[currentTag] as ConfigObject).toConfig())
                 descriptor.kind.listLike -> ListConfigReader(list[currentTag] as ConfigList)
                 descriptor.kind.objLike -> ConfigReader((list[currentTag] as ConfigObject).toConfig())
                 descriptor.kind == StructureKind.MAP -> MapConfigReader(list[currentTag] as ConfigObject)
@@ -209,8 +275,14 @@ public sealed class Hocon(
 
         private val indexSize = values.size * 2
 
+        override fun <T> decodeSerializableValue(deserializer: DeserializationStrategy<T>): T = when {
+            deserializer.descriptor.isDuration -> decodeDuration(ind)
+            else -> super.decodeSerializableValue(deserializer)
+        }
+
         override fun beginStructure(descriptor: SerialDescriptor): CompositeDecoder =
             when {
+                descriptor.kind is PolymorphicKind -> PolymorphConfigReader((values[currentTag / 2] as ConfigObject).toConfig())
                 descriptor.kind.listLike -> ListConfigReader(values[currentTag / 2] as ConfigList)
                 descriptor.kind.objLike -> ConfigReader((values[currentTag / 2] as ConfigObject).toConfig())
                 descriptor.kind == StructureKind.MAP -> MapConfigReader(values[currentTag / 2] as ConfigObject)

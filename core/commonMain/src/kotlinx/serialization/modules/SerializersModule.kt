@@ -6,8 +6,8 @@ package kotlinx.serialization.modules
 
 import kotlinx.serialization.*
 import kotlinx.serialization.internal.*
+import kotlin.js.*
 import kotlin.jvm.*
-import kotlin.native.concurrent.*
 import kotlin.reflect.*
 
 /**
@@ -17,6 +17,9 @@ import kotlin.reflect.*
  *
  * To enable runtime serializers resolution, one of the special annotations must be used on target types
  * ([Polymorphic] or [Contextual]), and a serial module with serializers should be used during construction of [SerialFormat].
+ *
+ * Serializers module can be built with `SerializersModule {}` builder function.
+ * Empty module can be obtained with `EmptySerializersModule()` factory function.
  *
  * @see Contextual
  * @see Polymorphic
@@ -28,7 +31,7 @@ public sealed class SerializersModule {
         "Deprecated in favor of overload with default parameter",
         ReplaceWith("getContextual(kclass)"),
         DeprecationLevel.HIDDEN
-    ) // Was stable since 1.0.0, HIDDEN in 1.2.0 in a backwards-compatible manner
+    ) // Was experimental since 1.0.0, HIDDEN in 1.2.0 in a backwards-compatible manner
     public fun <T : Any> getContextual(kclass: KClass<T>): KSerializer<T>? =
         getContextual(kclass, emptyList())
 
@@ -57,7 +60,7 @@ public sealed class SerializersModule {
      * or default value constructed from [serializedClassName] if a default serializer provider was registered.
      */
     @ExperimentalSerializationApi
-    public abstract fun <T : Any> getPolymorphic(baseClass: KClass<in T>, serializedClassName: String?): DeserializationStrategy<out T>?
+    public abstract fun <T : Any> getPolymorphic(baseClass: KClass<in T>, serializedClassName: String?): DeserializationStrategy<T>?
 
     /**
      * Copies contents of this module to the given [collector].
@@ -69,8 +72,10 @@ public sealed class SerializersModule {
 /**
  * A [SerializersModule] which is empty and always returns `null`.
  */
-@SharedImmutable
-@ExperimentalSerializationApi
+@Deprecated("Deprecated in the favour of 'EmptySerializersModule()'",
+    level = DeprecationLevel.WARNING,
+    replaceWith = ReplaceWith("EmptySerializersModule()"))
+@JsName("EmptySerializersModuleLegacyJs") // Compatibility with JS
 public val EmptySerializersModule: SerializersModule = SerialModuleImpl(emptyMap(), emptyMap(), emptyMap(), emptyMap(), emptyMap())
 
 /**
@@ -122,7 +127,7 @@ public infix fun SerializersModule.overwriteWith(other: SerializersModule): Seri
 
         override fun <Base : Any> polymorphicDefaultDeserializer(
             baseClass: KClass<Base>,
-            defaultDeserializerProvider: (className: String?) -> DeserializationStrategy<out Base>?
+            defaultDeserializerProvider: (className: String?) -> DeserializationStrategy<Base>?
         ) {
             registerDefaultPolymorphicDeserializer(baseClass, defaultDeserializerProvider, allowOverwrite = true)
         }
@@ -146,7 +151,7 @@ internal class SerialModuleImpl(
 ) : SerializersModule() {
 
     override fun <T : Any> getPolymorphic(baseClass: KClass<in T>, value: T): SerializationStrategy<T>? {
-        if (!value.isInstanceOf(baseClass)) return null
+        if (!baseClass.isInstance(value)) return null
         // Registered
         val registered = polyBase2Serializers[baseClass]?.get(value::class) as? SerializationStrategy<T>
         if (registered != null) return registered
@@ -154,7 +159,7 @@ internal class SerialModuleImpl(
         return (polyBase2DefaultSerializerProvider[baseClass] as? PolymorphicSerializerProvider<T>)?.invoke(value)
     }
 
-    override fun <T : Any> getPolymorphic(baseClass: KClass<in T>, serializedClassName: String?): DeserializationStrategy<out T>? {
+    override fun <T : Any> getPolymorphic(baseClass: KClass<in T>, serializedClassName: String?): DeserializationStrategy<T>? {
         // Registered
         val registered = polyBase2NamedSerializers[baseClass]?.get(serializedClassName) as? KSerializer<out T>
         if (registered != null) return registered
@@ -197,7 +202,7 @@ internal class SerialModuleImpl(
     }
 }
 
-internal typealias PolymorphicDeserializerProvider<Base> = (className: String?) -> DeserializationStrategy<out Base>?
+internal typealias PolymorphicDeserializerProvider<Base> = (className: String?) -> DeserializationStrategy<Base>?
 internal typealias PolymorphicSerializerProvider<Base> = (value: Base) -> SerializationStrategy<Base>?
 
 /** This class is needed to support re-registering the same static (argless) serializers:

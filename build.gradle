@@ -1,9 +1,22 @@
 /*
- * Copyright 2017-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license.
+ * Copyright 2017-2022 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license.
  */
 
 buildscript {
-    if (project.hasProperty("bootstrap")) {
+    /**
+     * Overrides for Teamcity 'K2 User Projects' + 'Aggregate build / Kotlinx libraries compilation' configuration:
+     * kotlin_repo_url - local repository with snapshot Kotlin compiler
+     * kotlin_version - kotlin version to use
+     * kotlin_language_version - LV to use
+     */
+    ext.snapshotRepoUrl = rootProject.properties["kotlin_repo_url"]
+    ext.kotlin_lv_override = rootProject.properties["kotlin_language_version"]
+    if (snapshotRepoUrl != null && snapshotRepoUrl != "") {
+        ext.kotlin_version = rootProject.properties["kotlin_version"]
+        repositories {
+            maven { url snapshotRepoUrl }
+        }
+    } else if (project.hasProperty("bootstrap")) {
         ext.kotlin_version = property('kotlin.version.snapshot')
         ext["kotlin.native.home"] = System.getenv("KONAN_LOCAL_DIST")
     } else {
@@ -12,18 +25,23 @@ buildscript {
     if (project.hasProperty("library.version")) {
         ext.overriden_version = property('library.version')
     }
-    ext.experimentalsEnabled = ["-progressive", "-opt-in=kotlin.Experimental",
+    ext.experimentalsEnabled = ["-progressive",
                                 "-opt-in=kotlin.ExperimentalMultiplatform",
-                                "-opt-in=kotlinx.serialization.InternalSerializationApi"
+                                "-opt-in=kotlinx.serialization.InternalSerializationApi",
+                                "-P", "plugin:org.jetbrains.kotlinx.serialization:disableIntrinsic=false"
     ]
 
-    ext.experimentalsInTestEnabled = ["-progressive", "-opt-in=kotlin.Experimental",
+    ext.experimentalsInTestEnabled = ["-progressive",
                                       "-opt-in=kotlin.ExperimentalMultiplatform",
                                       "-opt-in=kotlinx.serialization.ExperimentalSerializationApi",
                                       "-opt-in=kotlinx.serialization.InternalSerializationApi",
-                                      "-opt-in=kotlin.ExperimentalUnsignedTypes"
+                                      "-P", "plugin:org.jetbrains.kotlinx.serialization:disableIntrinsic=false"
     ]
     ext.koverEnabled = property('kover.enabled') ?: true
+
+    def noTeamcityInteractionFlag = rootProject.hasProperty("no_teamcity_interaction")
+    def buildSnapshotUPFlag = rootProject.hasProperty("build_snapshot_up")
+    ext.teamcityInteractionDisabled = noTeamcityInteractionFlag || buildSnapshotUPFlag
 
     /*
     * This property group is used to build kotlinx.serialization against Kotlin compiler snapshot.
@@ -74,8 +92,7 @@ buildscript {
 
         // Various benchmarking stuff
         classpath "com.github.jengelman.gradle.plugins:shadow:4.0.2"
-        classpath "me.champeau.gradle:jmh-gradle-plugin:0.5.3"
-        classpath "net.ltgt.gradle:gradle-apt-plugin:0.21"
+        classpath "me.champeau.jmh:jmh-gradle-plugin:0.6.6"
     }
 }
 
@@ -92,7 +109,7 @@ apiValidation {
 }
 
 knit {
-    siteRoot = "https://kotlin.github.io/kotlinx.serialization"
+    siteRoot = "https://kotlinlang.org/api/kotlinx.serialization"
     moduleDocs = "build/dokka/htmlMultiModule"
 }
 
@@ -125,6 +142,13 @@ allprojects {
         }
     }
 
+    if (snapshotRepoUrl != null && snapshotRepoUrl != "") {
+        // Snapshot-specific for K2 CI configurations
+        repositories {
+            maven { url snapshotRepoUrl }
+        }
+    }
+
     configurations.all {
         resolutionStrategy.eachDependency { DependencyResolveDetails details ->
             if (details.requested.group == 'org.jetbrains.kotlin') {
@@ -144,7 +168,18 @@ allprojects {
         mavenLocal()
 
     }
+
+    tasks.withType(org.jetbrains.kotlin.gradle.tasks.Kotlin2JsCompile).configureEach {
+        compilerOptions { freeCompilerArgs.add("-Xpartial-linkage-loglevel=ERROR") }
+    }
+    tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinNativeCompile).configureEach {
+        compilerOptions { freeCompilerArgs.add("-Xpartial-linkage-loglevel=ERROR") }
+    }
 }
+
+def unpublishedProjects = ["benchmark", "guide", "kotlinx-serialization-json-tests"] as Set
+def excludedFromBomProjects = unpublishedProjects + "kotlinx-serialization-bom" as Set
+def uncoveredProjects = ["kotlinx-serialization-bom", "benchmark", "guide"] as Set
 
 subprojects {
     tasks.withType(org.jetbrains.kotlin.gradle.tasks.AbstractKotlinCompile).all { task ->
@@ -157,33 +192,64 @@ subprojects {
 
     apply from: rootProject.file('gradle/teamcity.gradle')
     // Configure publishing for some artifacts
-    if (project.name != "benchmark" && project.name != "guide") {
+    if (!unpublishedProjects.contains(project.name)) {
         apply from: rootProject.file('gradle/publishing.gradle')
     }
-
 }
 
 subprojects {
     // Can't be applied to BOM
-    if (project.name == "kotlinx-serialization-bom" || project.name == "benchmark" || project.name == "guide") return
+    if (excludedFromBomProjects.contains(project.name)) return
 
     // Animalsniffer setup
+    // Animalsniffer requires java plugin to be applied, but Kotlin 1.9.20
+    // relies on `java-base` for Kotlin Multiplatforms `withJava` implementation
+    // https://github.com/xvik/gradle-animalsniffer-plugin/issues/84
+    // https://youtrack.jetbrains.com/issue/KT-59595
+    JavaPluginUtil.applyJavaPlugin(project)
     apply plugin: 'ru.vyarus.animalsniffer'
 
     afterEvaluate { // Can be applied only when the project is evaluated
         animalsniffer {
             sourceSets = [sourceSets.main]
+            def annotationValue = "kotlinx.serialization.json.internal.SuppressAnimalSniffer"
+            switch (name) {
+                case "kotlinx-serialization-core":
+                    annotationValue = "kotlinx.serialization.internal.SuppressAnimalSniffer"
+                    break
+                case "kotlinx-serialization-hocon":
+                    annotationValue = "kotlinx.serialization.hocon.internal.SuppressAnimalSniffer"
+                    break
+                case "kotlinx-serialization-protobuf":
+                    annotationValue = "kotlinx.serialization.protobuf.internal.SuppressAnimalSniffer"
+            }
+            annotation = annotationValue
         }
         dependencies {
             signature 'net.sf.androidscents.signature:android-api-level-14:4.0_r4@signature'
             signature 'org.codehaus.mojo.signature:java18:1.0@signature'
         }
-    }
 
-    // Kover setup
+        // Add dependency on kotlinx-serialization-bom inside other kotlinx-serialization modules themselves, so they have same versions
+        BomKt.addBomApiDependency(project, ":kotlinx-serialization-bom")
+    }
+}
+
+// Kover setup
+subprojects {
+    if (uncoveredProjects.contains(project.name)) return
+
     apply from: rootProject.file("gradle/kover.gradle")
 }
 
 apply from: rootProject.file('gradle/compiler-version.gradle')
 apply from: rootProject.file("gradle/dokka.gradle")
 apply from: rootProject.file("gradle/benchmark-parsing.gradle")
+
+tasks.named("dokkaHtmlMultiModule") {
+    pluginsMapConfiguration.set(["org.jetbrains.dokka.base.DokkaBase": """{ "templatesDir": "${projectDir.toString().replace('\\', '/')}/dokka-templates" }"""])
+}
+
+tasks.withType(org.jetbrains.kotlin.gradle.targets.js.npm.tasks.KotlinNpmInstallTask).configureEach {
+    args.add("--ignore-engines")
+}
