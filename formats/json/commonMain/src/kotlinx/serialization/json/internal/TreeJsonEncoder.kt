@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license.
+ * Copyright 2017-2022 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license.
  */
 @file:OptIn(ExperimentalSerializationApi::class)
 
@@ -14,9 +14,10 @@ import kotlinx.serialization.modules.*
 import kotlin.collections.set
 import kotlin.jvm.*
 
-internal fun <T> Json.writeJson(value: T, serializer: SerializationStrategy<T>): JsonElement {
+@JsonFriendModuleApi
+public fun <T> writeJson(json: Json, value: T, serializer: SerializationStrategy<T>): JsonElement {
     lateinit var result: JsonElement
-    val encoder = JsonTreeEncoder(this) { result = it }
+    val encoder = JsonTreeEncoder(json) { result = it }
     encoder.encodeSerializableValue(serializer, value)
     return result
 }
@@ -24,7 +25,7 @@ internal fun <T> Json.writeJson(value: T, serializer: SerializationStrategy<T>):
 @ExperimentalSerializationApi
 private sealed class AbstractJsonTreeEncoder(
     final override val json: Json,
-    private val nodeConsumer: (JsonElement) -> Unit
+    protected val nodeConsumer: (JsonElement) -> Unit
 ) : NamedValueEncoder(), JsonEncoder {
 
     final override val serializersModule: SerializersModule
@@ -34,6 +35,9 @@ private sealed class AbstractJsonTreeEncoder(
     protected val configuration = json.configuration
 
     private var polymorphicDiscriminator: String? = null
+
+    override fun elementName(descriptor: SerialDescriptor, index: Int): String =
+        descriptor.getJsonElementName(json, index)
 
     override fun encodeJsonElement(element: JsonElement) {
         encodeSerializableValue(JsonElementSerializer, element)
@@ -46,7 +50,10 @@ private sealed class AbstractJsonTreeEncoder(
     abstract fun putElement(key: String, element: JsonElement)
     abstract fun getCurrent(): JsonElement
 
+    // has no tag when encoding a nullable element at root level
+    override fun encodeNotNullMark() {}
 
+    // has no tag when encoding a nullable element at root level
     override fun encodeNull() {
         val tag = currentTagOrNull ?: return nodeConsumer(JsonNull)
         encodeTaggedNull(tag)
@@ -73,7 +80,6 @@ private sealed class AbstractJsonTreeEncoder(
             encodePolymorphically(serializer, value) { polymorphicDiscriminator = it }
         } else JsonPrimitiveEncoder(json, nodeConsumer).apply {
             encodeSerializableValue(serializer, value)
-            endEncode(serializer.descriptor)
         }
     }
 
@@ -98,9 +104,20 @@ private sealed class AbstractJsonTreeEncoder(
         putElement(tag, JsonPrimitive(value.toString()))
     }
 
-    @OptIn(ExperimentalUnsignedTypes::class)
     override fun encodeTaggedInline(tag: String, inlineDescriptor: SerialDescriptor): Encoder =
-        if (inlineDescriptor.isUnsignedNumber) object : AbstractEncoder() {
+        when {
+            inlineDescriptor.isUnsignedNumber -> inlineUnsignedNumberEncoder(tag)
+            inlineDescriptor.isUnquotedLiteral -> inlineUnquotedLiteralEncoder(tag, inlineDescriptor)
+            else -> super.encodeTaggedInline(tag, inlineDescriptor)
+        }
+
+    override fun encodeInline(descriptor: SerialDescriptor): Encoder {
+        return if (currentTagOrNull != null) super.encodeInline(descriptor)
+        else JsonPrimitiveEncoder(json, nodeConsumer).encodeInline(descriptor)
+    }
+
+    @SuppressAnimalSniffer // Long(Integer).toUnsignedString(long)
+    private fun inlineUnsignedNumberEncoder(tag: String) = object : AbstractEncoder() {
             override val serializersModule: SerializersModule = json.serializersModule
 
             fun putUnquotedString(s: String) = putElement(tag, JsonLiteral(s, isString = false))
@@ -109,7 +126,12 @@ private sealed class AbstractJsonTreeEncoder(
             override fun encodeByte(value: Byte) = putUnquotedString(value.toUByte().toString())
             override fun encodeShort(value: Short) = putUnquotedString(value.toUShort().toString())
         }
-        else super.encodeTaggedInline(tag, inlineDescriptor)
+
+    private fun inlineUnquotedLiteralEncoder(tag: String, inlineDescriptor: SerialDescriptor) = object : AbstractEncoder() {
+        override val serializersModule: SerializersModule get() = json.serializersModule
+
+        override fun encodeString(value: String)  = putElement(tag, JsonLiteral(value, isString = false, coerceToInlineType = inlineDescriptor))
+    }
 
     override fun beginStructure(descriptor: SerialDescriptor): CompositeEncoder {
         val consumer =
@@ -158,6 +180,7 @@ private class JsonPrimitiveEncoder(
         require(key === PRIMITIVE_TAG) { "This output can only consume primitives with '$PRIMITIVE_TAG' tag" }
         require(content == null) { "Primitive element was already recorded. Does call to .encodeXxx happen more than once?" }
         content = element
+        nodeConsumer(element)
     }
 
     override fun getCurrent(): JsonElement =

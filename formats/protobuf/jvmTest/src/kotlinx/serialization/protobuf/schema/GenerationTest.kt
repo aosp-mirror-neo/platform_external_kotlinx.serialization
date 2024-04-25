@@ -25,6 +25,7 @@ internal val commonClasses = listOf(
     GenerationTest.LegacyMapHolder::class,
     GenerationTest.NullableNestedCollections::class,
     GenerationTest.OptionalCollections::class,
+    GenerationTest.EnumWithProtoNumber::class,
 )
 
 class GenerationTest {
@@ -60,7 +61,7 @@ class GenerationTest {
         @ProtoNumber(5)
         val b: Int,
         @ProtoNumber(3)
-        val c: Int
+        val c: UInt,
     )
 
     @Serializable
@@ -82,6 +83,10 @@ class GenerationTest {
 
     @Serializable
     data class OptionsClass(val i: Int)
+
+    @JvmInline
+    @Serializable
+    value class WrappedUInt(val i : UInt)
 
     @Serializable
     class ListClass(
@@ -112,9 +117,17 @@ class GenerationTest {
     @Serializable
     data class OptionalClass(
         val requiredInt: Int,
+        val requiredUInt: UInt,
+        val requiredWrappedUInt: WrappedUInt,
         val optionalInt: Int = 5,
+        val optionalUInt: UInt = 5U,
+        val optionalWrappedUInt: WrappedUInt = WrappedUInt(5U),
         val nullableInt: Int?,
-        val nullableOptionalInt: Int? = 10
+        val nullableUInt: UInt?,
+        val nullableWrappedUInt: WrappedUInt?,
+        val nullableOptionalInt: Int? = 10,
+        val nullableOptionalUInt: UInt? = 10U,
+        val nullableOptionalWrappedUInt: WrappedUInt? = WrappedUInt(10U),
     )
 
     @Serializable
@@ -179,6 +192,16 @@ class GenerationTest {
         val intList: List<List<Int?>>,
         val legacyMap: Map<List<Int>?, List<Int>?>
     )
+
+    @Serializable
+    enum class EnumWithProtoNumber {
+        ZERO,
+        @ProtoNumber(3)
+        THREE,
+        TWO,
+        @ProtoNumber(5)
+        FIVE,
+    }
 
     @Test
     fun testIndividuals() {

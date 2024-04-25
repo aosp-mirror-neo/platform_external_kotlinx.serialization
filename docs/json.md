@@ -20,11 +20,17 @@ In this chapter, we'll walk through features of [JSON](https://www.json.org/json
   * [Allowing structured map keys](#allowing-structured-map-keys)
   * [Allowing special floating-point values](#allowing-special-floating-point-values)
   * [Class discriminator for polymorphism](#class-discriminator-for-polymorphism)
+  * [Class discriminator output mode](#class-discriminator-output-mode)
+  * [Decoding enums in a case-insensitive manner](#decoding-enums-in-a-case-insensitive-manner)
+  * [Global naming strategy](#global-naming-strategy)
 * [Json elements](#json-elements)
   * [Parsing to Json element](#parsing-to-json-element)
   * [Types of Json elements](#types-of-json-elements)
   * [Json element builders](#json-element-builders)
   * [Decoding Json elements](#decoding-json-elements)
+  * [Encoding literal Json content (experimental)](#encoding-literal-json-content-experimental)
+    * [Serializing large decimal numbers](#serializing-large-decimal-numbers)
+    * [Using `JsonUnquotedLiteral` to create a literal unquoted value of `null` is forbidden](#using-jsonunquotedliteral-to-create-a-literal-unquoted-value-of-null-is-forbidden)
 * [Json transformations](#json-transformations)
   * [Array wrapping](#array-wrapping)
   * [Array unwrapping](#array-unwrapping)
@@ -89,7 +95,7 @@ It gives the following nice result:
 ### Lenient parsing
 
 By default, [Json] parser enforces various JSON restrictions to be as specification-compliant as possible
-(see [RFC-4627]). Particularly, keys must be quoted, while literals must be unquoted. Those restrictions can be relaxed with
+(see [RFC-4627]). Particularly, keys and string literals must be quoted. Those restrictions can be relaxed with
 the [isLenient][JsonBuilder.isLenient] property. With `isLenient = true`, you can parse quite freely-formatted data:
 
 ```kotlin
@@ -236,7 +242,7 @@ Project(name=kotlinx.serialization, language=Kotlin)
 ### Encoding defaults
 
 Default values of properties are not encoded by default because they will be assigned to missing fields during decoding anyway.
-See the [Defaults are not encoded](basic-serialization.md#defaults-are-not-encoded) section for details and an example.
+See the [Defaults are not encoded](basic-serialization.md#defaults-are-not-encoded-by-default) section for details and an example.
 This is especially useful for nullable properties with null defaults and avoids writing the corresponding null values.
 The default behavior can be changed by setting the [encodeDefaults][JsonBuilder.encodeDefaults] property to `true`:
 
@@ -465,6 +471,125 @@ As you can see, discriminator from the `Base` class is used:
 
 <!--- TEST -->
 
+### Class discriminator output mode
+
+Class discriminator provides information for serializing and deserializing [polymorphic class hierarchies](polymorphism.md#sealed-classes).
+As shown above, it is only added for polymorphic classes by default.
+In case you want to encode more or less information for various third party APIs about types in the output, it is possible to control
+addition of the class discriminator with the [JsonBuilder.classDiscriminatorMode] property.
+
+For example, [ClassDiscriminatorMode.NONE] does not add class discriminator at all, in case the receiving party is not interested in Kotlin types:
+
+```kotlin
+val format = Json { classDiscriminatorMode = ClassDiscriminatorMode.NONE }
+
+@Serializable
+sealed class Project {
+    abstract val name: String
+}
+
+@Serializable
+class OwnedProject(override val name: String, val owner: String) : Project()
+
+fun main() {
+    val data: Project = OwnedProject("kotlinx.coroutines", "kotlin")
+    println(format.encodeToString(data))
+}
+```
+
+> You can get the full code [here](../guide/example/example-json-12.kt).
+
+Note that it would be impossible to deserialize this output back with kotlinx.serialization.
+
+```text
+{"name":"kotlinx.coroutines","owner":"kotlin"}
+```
+
+Two other available values are [ClassDiscriminatorMode.POLYMORPHIC] (default behavior) and [ClassDiscriminatorMode.ALL_JSON_OBJECTS] (adds discriminator whenever possible).
+Consult their documentation for details.
+
+<!--- TEST -->
+
+### Decoding enums in a case-insensitive manner
+
+[Kotlin's naming policy recommends](https://kotlinlang.org/docs/coding-conventions.html#property-names) naming enum values
+using either uppercase underscore-separated names or upper camel case names.
+[Json] uses exact Kotlin enum values names for decoding by default.
+However, sometimes third-party JSONs have such values named in lowercase or some mixed case.
+In this case, it is possible to decode enum values in a case-insensitive manner using [JsonBuilder.decodeEnumsCaseInsensitive] property:
+
+```kotlin
+val format = Json { decodeEnumsCaseInsensitive = true }
+
+enum class Cases { VALUE_A, @JsonNames("Alternative") VALUE_B }
+
+@Serializable
+data class CasesList(val cases: List<Cases>)
+
+fun main() {
+  println(format.decodeFromString<CasesList>("""{"cases":["value_A", "alternative"]}""")) 
+}
+```
+
+> You can get the full code [here](../guide/example/example-json-13.kt).
+
+It affects serial names as well as alternative names specified with [JsonNames] annotation, so both values are successfully decoded:
+
+```text
+CasesList(cases=[VALUE_A, VALUE_B])
+```
+
+This property does not affect encoding in any way.
+
+<!--- TEST -->
+
+### Global naming strategy
+
+If properties' names in Json input are different from Kotlin ones, it is recommended to specify the name 
+for each property explicitly using [`@SerialName` annotation](basic-serialization.md#serial-field-names).
+However, there are certain situations where transformation should be applied to every serial name — such as migration
+from other frameworks or legacy codebase. For that cases, it is possible to specify a [namingStrategy][JsonBuilder.namingStrategy]
+for a [Json] instance. `kotlinx.serialization` provides one strategy implementation out of the box, the [JsonNamingStrategy.SnakeCase](https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/-json-naming-strategy/-builtins/-snake-case.html):
+
+```kotlin
+@Serializable
+data class Project(val projectName: String, val projectOwner: String)
+
+val format = Json { namingStrategy = JsonNamingStrategy.SnakeCase }
+
+fun main() {
+    val project = format.decodeFromString<Project>("""{"project_name":"kotlinx.coroutines", "project_owner":"Kotlin"}""")
+    println(format.encodeToString(project.copy(projectName = "kotlinx.serialization")))
+}
+```
+
+> You can get the full code [here](../guide/example/example-json-14.kt).
+
+As you can see, both serialization and deserialization work as if all serial names are transformed from camel case to snake case:
+
+```text
+{"project_name":"kotlinx.serialization","project_owner":"Kotlin"}
+```
+
+There are some caveats one should remember while dealing with a [JsonNamingStrategy]:
+
+* Due to the nature of the `kotlinx.serialization` framework, naming strategy transformation is applied to all properties regardless 
+of whether their serial name was taken from the property name or provided by [SerialName] annotation.
+Effectively, it means one cannot avoid transformation by explicitly specifying the serial name. To be able to deserialize
+non-transformed names, [JsonNames] annotation can be used instead.
+
+* Collision of the transformed name with any other (transformed) properties serial names or any alternative names
+specified with [JsonNames] will lead to a deserialization exception.
+
+* Global naming strategies are very implicit: by looking only at the definition of the class,
+it is impossible to determine which names it will have in the serialized form.
+As a consequence, naming strategies are not friendly to actions like Find Usages/Rename in IDE, full-text search by grep, etc.
+For them, the original name and the transformed are two different things;
+changing one without the other may introduce bugs in many unexpected ways and lead to greater maintenance efforts for code with global naming strategies.
+
+Therefore, one should carefully weigh the pros and cons before considering adding global naming strategies to an application.
+
+<!--- TEST -->
 
 ## Json elements
 
@@ -490,7 +615,7 @@ fun main() {
 }
 ```
 
-> You can get the full code [here](../guide/example/example-json-12.kt).
+> You can get the full code [here](../guide/example/example-json-15.kt).
 
 A `JsonElement` prints itself as a valid JSON:
 
@@ -533,7 +658,7 @@ fun main() {
 }
 ```
 
-> You can get the full code [here](../guide/example/example-json-13.kt).
+> You can get the full code [here](../guide/example/example-json-16.kt).
 
 The above example sums `votes` in all objects in the `forks` array, ignoring the objects that have no `votes`:
 
@@ -548,7 +673,7 @@ Note that the execution will fail if the structure of the data is otherwise diff
 ### Json element builders
 
 You can construct instances of specific [JsonElement] subtypes using the respective builder functions
-[buildJsonArray] and [buildJsonObject]. They provide a DSL to define the resulting JSON structure. It is
+[buildJsonArray] and [buildJsonObject]. They provide a DSL to define the resulting JSON structure. It 
 is similar to Kotlin standard library collection builders, but with a JSON-specific convenience
 of more type-specific overloads and inner builder functions. The following example shows
 all the key features:
@@ -573,7 +698,7 @@ fun main() {
 }
 ```
 
-> You can get the full code [here](../guide/example/example-json-14.kt).
+> You can get the full code [here](../guide/example/example-json-17.kt).
 
 As a result, you get a proper JSON string:
 
@@ -602,7 +727,7 @@ fun main() {
 }
 ```
 
-> You can get the full code [here](../guide/example/example-json-15.kt).
+> You can get the full code [here](../guide/example/example-json-18.kt).
 
 The result is exactly what you would expect:
 
@@ -611,6 +736,153 @@ Project(name=kotlinx.serialization, language=Kotlin)
 ```
 
 <!--- TEST -->
+
+### Encoding literal Json content (experimental)
+
+> This functionality is experimental and requires opting-in to [the experimental Kotlinx Serialization API](compatibility.md#experimental-api).
+
+In some cases it might be necessary to encode an arbitrary unquoted value. 
+This can be achieved with [JsonUnquotedLiteral].
+
+#### Serializing large decimal numbers
+
+The JSON specification does not restrict the size or precision of numbers, however it is not possible to serialize 
+numbers of arbitrary size or precision using [JsonPrimitive()].
+
+If [Double] is used, then the numbers are limited in precision, meaning that large numbers are truncated. 
+When using Kotlin/JVM [BigDecimal] can be used instead, but [JsonPrimitive()] will encode the value as a string, not a 
+number.
+
+```kotlin
+import java.math.BigDecimal
+
+val format = Json { prettyPrint = true }
+
+fun main() {
+    val pi = BigDecimal("3.141592653589793238462643383279")
+    
+    val piJsonDouble = JsonPrimitive(pi.toDouble())
+    val piJsonString = JsonPrimitive(pi.toString())
+  
+    val piObject = buildJsonObject {
+        put("pi_double", piJsonDouble)
+        put("pi_string", piJsonString)
+    }
+
+    println(format.encodeToString(piObject))
+}
+```
+
+> You can get the full code [here](../guide/example/example-json-19.kt).
+
+Even though `pi` was defined as a number with 30 decimal places, the resulting JSON does not reflect this. 
+The [Double] value is truncated to 15 decimal places, and the String is wrapped in quotes - which is not a JSON number.
+
+```text
+{
+    "pi_double": 3.141592653589793,
+    "pi_string": "3.141592653589793238462643383279"
+}
+```
+
+<!--- TEST -->
+
+To avoid precision loss, the string value of `pi` can be encoded using [JsonUnquotedLiteral].
+
+```kotlin
+import java.math.BigDecimal
+
+val format = Json { prettyPrint = true }
+
+fun main() {
+    val pi = BigDecimal("3.141592653589793238462643383279")
+
+    // use JsonUnquotedLiteral to encode raw JSON content
+    val piJsonLiteral = JsonUnquotedLiteral(pi.toString())
+
+    val piJsonDouble = JsonPrimitive(pi.toDouble())
+    val piJsonString = JsonPrimitive(pi.toString())
+  
+    val piObject = buildJsonObject {
+        put("pi_literal", piJsonLiteral)
+        put("pi_double", piJsonDouble)
+        put("pi_string", piJsonString)
+    }
+
+    println(format.encodeToString(piObject))
+}
+```
+
+> You can get the full code [here](../guide/example/example-json-20.kt).
+
+`pi_literal` now accurately matches the value defined.
+
+```text
+{
+    "pi_literal": 3.141592653589793238462643383279,
+    "pi_double": 3.141592653589793,
+    "pi_string": "3.141592653589793238462643383279"
+}
+```
+
+<!--- TEST -->
+
+To decode `pi` back to a [BigDecimal], the string content of the [JsonPrimitive] can be used.
+
+(This demonstration uses a [JsonPrimitive] for simplicity. For a more re-usable method of handling serialization, see 
+[Json Transformations](#json-transformations) below.) 
+
+
+```kotlin
+import java.math.BigDecimal
+
+fun main() {
+    val piObjectJson = """
+          {
+              "pi_literal": 3.141592653589793238462643383279
+          }
+      """.trimIndent()
+    
+    val piObject: JsonObject = Json.decodeFromString(piObjectJson)
+    
+    val piJsonLiteral = piObject["pi_literal"]!!.jsonPrimitive.content
+    
+    val pi = BigDecimal(piJsonLiteral)
+    
+    println(pi)
+}
+```
+
+> You can get the full code [here](../guide/example/example-json-21.kt).
+
+The exact value of `pi` is decoded, with all 30 decimal places of precision that were in the source JSON.
+
+```text
+3.141592653589793238462643383279
+```
+
+<!--- TEST -->
+
+#### Using `JsonUnquotedLiteral` to create a literal unquoted value of `null` is forbidden
+
+To avoid creating an inconsistent state, encoding a String equal to `"null"` is forbidden. 
+Use [JsonNull] or [JsonPrimitive] instead.
+
+```kotlin
+fun main() {
+    // caution: creating null with JsonUnquotedLiteral will cause an exception! 
+    JsonUnquotedLiteral("null")
+}
+```
+
+> You can get the full code [here](../guide/example/example-json-22.kt).
+
+```text
+Exception in thread "main" kotlinx.serialization.json.internal.JsonEncodingException: Creating a literal unquoted value of 'null' is forbidden. If you want to create JSON null literal, use JsonNull object, otherwise, use JsonPrimitive
+```
+
+<!--- TEST LINES_START -->
+
 
 ## Json transformations
 
@@ -679,7 +951,7 @@ fun main() {
 }
 ```
 
-> You can get the full code [here](../guide/example/example-json-16.kt).
+> You can get the full code [here](../guide/example/example-json-23.kt).
 
 The output shows that both cases are correctly deserialized into a Kotlin [List].
 
@@ -731,7 +1003,7 @@ fun main() {
 }
 ```
 
-> You can get the full code [here](../guide/example/example-json-17.kt).
+> You can get the full code [here](../guide/example/example-json-24.kt).
 
 You end up with a single JSON object, not an array with one element:
 
@@ -776,7 +1048,7 @@ fun main() {
 }
 ```
 
-> You can get the full code [here](../guide/example/example-json-18.kt).
+> You can get the full code [here](../guide/example/example-json-25.kt).
 
 See the effect of the custom serializer:
 
@@ -849,7 +1121,7 @@ fun main() {
 }
 ```
 
-> You can get the full code [here](../guide/example/example-json-19.kt).
+> You can get the full code [here](../guide/example/example-json-26.kt).
 
 No class discriminator is added in the JSON output:
 
@@ -896,10 +1168,10 @@ sealed class Response<out T> {
 
 class ResponseSerializer<T>(private val dataSerializer: KSerializer<T>) : KSerializer<Response<T>> {
     override val descriptor: SerialDescriptor = buildSerialDescriptor("Response", PolymorphicKind.SEALED) {
-        element("Ok", buildClassSerialDescriptor("Ok") {
-            element<String>("message")
+        element("Ok", dataSerializer.descriptor)
+        element("Error", buildClassSerialDescriptor("Error") {
+          element<String>("message")
         })
-        element("Error", dataSerializer.descriptor)
     }
 
     override fun deserialize(decoder: Decoder): Response<T> {
@@ -945,7 +1217,7 @@ fun main() {
 }
 ```
 
-> You can get the full code [here](../guide/example/example-json-20.kt).
+> You can get the full code [here](../guide/example/example-json-27.kt).
 
 This gives you fine-grained control on the representation of the `Response` class in the JSON output:
 
@@ -1010,7 +1282,7 @@ fun main() {
 }
 ```
 
-> You can get the full code [here](../guide/example/example-json-21.kt).
+> You can get the full code [here](../guide/example/example-json-28.kt).
 
 ```text
 UnknownProject(name=example, details={"type":"unknown","maintainer":"Unknown","license":"Apache 2.0"})
@@ -1025,8 +1297,10 @@ The next chapter covers [Alternative and custom formats (experimental)](formats.
 
 <!-- references -->
 [RFC-4627]: https://www.ietf.org/rfc/rfc4627.txt
+[BigDecimal]: https://docs.oracle.com/javase/8/docs/api/java/math/BigDecimal.html
 
 <!-- stdlib references -->
+[Double]: https://kotlinlang.org/api/latest/jvm/stdlib/kotlin/-double/
 [Double.NaN]: https://kotlinlang.org/api/latest/jvm/stdlib/kotlin/-double/-na-n.html
 [List]: https://kotlinlang.org/api/latest/jvm/stdlib/kotlin.collections/-list/
 [Map]: https://kotlinlang.org/api/latest/jvm/stdlib/kotlin.collections/-map/
@@ -1034,60 +1308,69 @@ The next chapter covers [Alternative and custom formats (experimental)](formats.
 <!--- MODULE /kotlinx-serialization-core -->
 <!--- INDEX kotlinx-serialization-core/kotlinx.serialization -->
 
-[SerialName]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization/-serial-name/index.html
-[InheritableSerialInfo]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization/-inheritable-serial-info/index.html
-[KSerializer]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization/-k-serializer/index.html
-[Serializable]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization/-serializable/index.html
+[SerialName]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization/-serial-name/index.html
+[InheritableSerialInfo]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization/-inheritable-serial-info/index.html
+[KSerializer]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization/-k-serializer/index.html
+[Serializable]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization/-serializable/index.html
 
 <!--- INDEX kotlinx-serialization-core/kotlinx.serialization.encoding -->
 
-[Encoder]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization.encoding/-encoder/index.html
-[Decoder]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization.encoding/-decoder/index.html
+[Encoder]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization.encoding/-encoder/index.html
+[Decoder]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization.encoding/-decoder/index.html
 
 <!--- MODULE /kotlinx-serialization-json -->
 <!--- INDEX kotlinx-serialization-json/kotlinx.serialization.json -->
 
-[Json]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/-json/index.html
-[Json()]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/-json.html
-[JsonBuilder]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/-json-builder/index.html
-[JsonBuilder.prettyPrint]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/-json-builder/pretty-print.html
-[JsonBuilder.isLenient]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/-json-builder/is-lenient.html
-[JsonBuilder.ignoreUnknownKeys]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/-json-builder/ignore-unknown-keys.html
-[JsonNames]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/-json-names/index.html
-[JsonBuilder.useAlternativeNames]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/-json-builder/use-alternative-names.html
-[JsonBuilder.coerceInputValues]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/-json-builder/coerce-input-values.html
-[JsonBuilder.encodeDefaults]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/-json-builder/encode-defaults.html
-[JsonBuilder.explicitNulls]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/-json-builder/explicit-nulls.html
-[JsonBuilder.allowStructuredMapKeys]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/-json-builder/allow-structured-map-keys.html
-[JsonBuilder.allowSpecialFloatingPointValues]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/-json-builder/allow-special-floating-point-values.html
-[JsonBuilder.classDiscriminator]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/-json-builder/class-discriminator.html
-[JsonClassDiscriminator]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/-json-class-discriminator/index.html
-[JsonElement]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/-json-element/index.html
-[Json.parseToJsonElement]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/-json/parse-to-json-element.html
-[JsonPrimitive]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/-json-primitive/index.html
-[JsonPrimitive.content]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/-json-primitive/content.html
-[JsonPrimitive()]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/-json-primitive.html
-[JsonArray]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/-json-array/index.html
-[JsonObject]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/-json-object/index.html
-[_jsonPrimitive]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/json-primitive.html
-[_jsonArray]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/json-array.html
-[_jsonObject]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/json-object.html
-[int]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/int.html
-[intOrNull]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/int-or-null.html
-[long]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/long.html
-[longOrNull]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/long-or-null.html
-[buildJsonArray]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/build-json-array.html
-[buildJsonObject]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/build-json-object.html
-[Json.decodeFromJsonElement]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/decode-from-json-element.html
-[JsonTransformingSerializer]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/-json-transforming-serializer/index.html
-[Json.encodeToString]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/-json/encode-to-string.html
-[JsonContentPolymorphicSerializer]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/-json-content-polymorphic-serializer/index.html
-[JsonEncoder]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/-json-encoder/index.html
-[JsonDecoder]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/-json-decoder/index.html
-[JsonDecoder.decodeJsonElement]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/-json-decoder/decode-json-element.html
-[JsonEncoder.encodeJsonElement]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/-json-encoder/encode-json-element.html
-[JsonDecoder.json]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/-json-decoder/json.html
-[JsonEncoder.json]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/-json-encoder/json.html
-[Json.encodeToJsonElement]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/encode-to-json-element.html
+[Json]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/-json/index.html
+[Json()]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/-json.html
+[JsonBuilder]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/-json-builder/index.html
+[JsonBuilder.prettyPrint]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/-json-builder/pretty-print.html
+[JsonBuilder.isLenient]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/-json-builder/is-lenient.html
+[JsonBuilder.ignoreUnknownKeys]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/-json-builder/ignore-unknown-keys.html
+[JsonNames]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/-json-names/index.html
+[JsonBuilder.useAlternativeNames]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/-json-builder/use-alternative-names.html
+[JsonBuilder.coerceInputValues]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/-json-builder/coerce-input-values.html
+[JsonBuilder.encodeDefaults]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/-json-builder/encode-defaults.html
+[JsonBuilder.explicitNulls]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/-json-builder/explicit-nulls.html
+[JsonBuilder.allowStructuredMapKeys]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/-json-builder/allow-structured-map-keys.html
+[JsonBuilder.allowSpecialFloatingPointValues]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/-json-builder/allow-special-floating-point-values.html
+[JsonBuilder.classDiscriminator]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/-json-builder/class-discriminator.html
+[JsonClassDiscriminator]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/-json-class-discriminator/index.html
+[JsonBuilder.classDiscriminatorMode]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/-json-builder/class-discriminator-mode.html
+[ClassDiscriminatorMode.NONE]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/-class-discriminator-mode/-n-o-n-e/index.html
+[ClassDiscriminatorMode.POLYMORPHIC]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/-class-discriminator-mode/-p-o-l-y-m-o-r-p-h-i-c/index.html
+[ClassDiscriminatorMode.ALL_JSON_OBJECTS]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/-class-discriminator-mode/-a-l-l_-j-s-o-n_-o-b-j-e-c-t-s/index.html
+[JsonBuilder.decodeEnumsCaseInsensitive]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/-json-builder/decode-enums-case-insensitive.html
+[JsonBuilder.namingStrategy]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/-json-builder/naming-strategy.html
+[JsonNamingStrategy]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/-json-naming-strategy/index.html
+[JsonElement]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/-json-element/index.html
+[Json.parseToJsonElement]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/-json/parse-to-json-element.html
+[JsonPrimitive]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/-json-primitive/index.html
+[JsonPrimitive.content]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/-json-primitive/content.html
+[JsonPrimitive()]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/-json-primitive.html
+[JsonArray]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/-json-array/index.html
+[JsonObject]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/-json-object/index.html
+[_jsonPrimitive]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/json-primitive.html
+[_jsonArray]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/json-array.html
+[_jsonObject]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/json-object.html
+[int]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/int.html
+[intOrNull]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/int-or-null.html
+[long]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/long.html
+[longOrNull]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/long-or-null.html
+[buildJsonArray]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/build-json-array.html
+[buildJsonObject]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/build-json-object.html
+[Json.decodeFromJsonElement]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/decode-from-json-element.html
+[JsonUnquotedLiteral]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/-json-unquoted-literal.html
+[JsonNull]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/-json-null/index.html
+[JsonTransformingSerializer]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/-json-transforming-serializer/index.html
+[Json.encodeToString]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/-json/encode-to-string.html
+[JsonContentPolymorphicSerializer]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/-json-content-polymorphic-serializer/index.html
+[JsonEncoder]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/-json-encoder/index.html
+[JsonDecoder]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/-json-decoder/index.html
+[JsonDecoder.decodeJsonElement]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/-json-decoder/decode-json-element.html
+[JsonEncoder.encodeJsonElement]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/-json-encoder/encode-json-element.html
+[JsonDecoder.json]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/-json-decoder/json.html
+[JsonEncoder.json]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/-json-encoder/json.html
+[Json.encodeToJsonElement]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/encode-to-json-element.html
 
 <!--- END -->

@@ -82,4 +82,18 @@ class BuiltinClassesTest {
             "{}"
         )
     }
+
+    @Test
+    fun testExampleBuiltin12() {
+        captureOutput("ExampleBuiltin12") { example.exampleBuiltin12.main() }.verifyOutputLines(
+            "\"PT16M40S\""
+        )
+    }
+
+    @Test
+    fun testExampleBuiltin13() {
+        captureOutput("ExampleBuiltin13") { example.exampleBuiltin13.main() }.verifyOutputLines(
+            "{\"value\":42}"
+        )
+    }
 }

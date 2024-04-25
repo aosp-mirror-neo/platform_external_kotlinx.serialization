@@ -3,6 +3,8 @@
 # IntelliJ files
 **/.idea/*
 !/.idea/vcs.xml
+!/.idea/codeStyles
+!/.idea/copyright
 out/
 *.iml
 
@@ -15,3 +17,6 @@ target
 
 # Modules for JS projects build
 node_modules
+
+# benchmarks.jar
+/benchmarks.jar

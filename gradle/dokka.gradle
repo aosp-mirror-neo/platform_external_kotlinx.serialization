@@ -7,10 +7,12 @@ apply plugin: 'org.jetbrains.dokka'
 
 def documentedSubprojects = ["kotlinx-serialization-core",
                              "kotlinx-serialization-json",
+                             "kotlinx-serialization-json-okio",
                              "kotlinx-serialization-cbor",
                              "kotlinx-serialization-properties",
                              "kotlinx-serialization-hocon",
                              "kotlinx-serialization-protobuf"]
+
 subprojects {
     if (!(name in documentedSubprojects)) return
     apply plugin: 'org.jetbrains.dokka'
@@ -20,6 +22,8 @@ subprojects {
 
     tasks.named('dokkaHtmlPartial') {
         outputDirectory = file("build/dokka")
+        pluginsMapConfiguration.set(["org.jetbrains.dokka.base.DokkaBase": """{ "templatesDir": "${rootProject.projectDir.toString().replace('\\', '/')}/dokka-templates" }"""])
+
         dokkaSourceSets {
             configureEach {
                 includes.from(rootProject.file('dokka/moduledoc.md').path)
@@ -34,6 +38,13 @@ subprojects {
                 perPackageOption {
                     matchingRegex.set("kotlinx\\.serialization.internal(\$|\\.).*")
                     suppress.set(true)
+                }
+
+                // Internal JSON API
+                perPackageOption {
+                    matchingRegex.set("kotlinx\\.serialization.json.internal(\$|\\.).*")
+                    suppress.set(true)
+                    reportUndocumented.set(false)
                 }
 
                 // Workaround for typealias
@@ -55,6 +66,18 @@ subprojects {
                     matchingRegex.set("org\\.jetbrains\\.kotlinx\\.serialization\\.config(\$|\\.).*")
                     reportUndocumented.set(false)
                     skipDeprecated.set(true)
+                }
+
+                // JS/Native implementation of JVM-only `org.intellij.lang.annotations.Language` class to add syntax support by IDE.
+                perPackageOption {
+                    matchingRegex.set("org\\.intellij\\.lang\\.annotations(\$|\\.).*")
+                    suppress.set(true)
+                }
+
+                sourceLink {
+                    localDirectory.set(rootDir)
+                    remoteUrl.set(new URL("https://github.com/Kotlin/kotlinx.serialization/tree/master"))
+                    remoteLineSuffix.set("#L")
                 }
             }
         }

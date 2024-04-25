@@ -4,14 +4,14 @@
 
 package kotlinx.serialization.json.internal
 
-import kotlinx.serialization.json.internal.*
 import kotlinx.serialization.json.internal.CharMappings.CHAR_TO_TOKEN
 import kotlinx.serialization.json.internal.CharMappings.ESCAPE_2_CHAR
 import kotlin.js.*
 import kotlin.jvm.*
+import kotlin.math.*
 
-internal const val lenientHint = "Use 'isLenient = true' in 'Json {}` builder to accept non-compliant JSON."
-internal const val coerceInputValuesHint = "Use 'coerceInputValues = true' in 'Json {}` builder to coerce nulls to default values."
+internal const val lenientHint = "Use 'isLenient = true' in 'Json {}' builder to accept non-compliant JSON."
+internal const val coerceInputValuesHint = "Use 'coerceInputValues = true' in 'Json {}' builder to coerce nulls if property has a default value."
 internal const val specialFlowingValuesHint =
     "It is possible to deserialize them using 'JsonBuilder.allowSpecialFloatingPointValues = true'"
 internal const val ignoreUnknownKeysHint = "Use 'ignoreUnknownKeys = true' in 'Json {}' builder to ignore unknown keys."
@@ -55,6 +55,20 @@ private const val CTC_MAX = 0x7e
 private const val ESC2C_MAX = 0x75
 
 internal const val asciiCaseMask = 1 shl 5
+
+internal fun tokenDescription(token: Byte) = when (token) {
+    TC_STRING -> "quotation mark '\"'"
+    TC_STRING_ESC -> "string escape sequence '\\'"
+    TC_COMMA -> "comma ','"
+    TC_COLON -> "colon ':'"
+    TC_BEGIN_OBJ -> "start of the object '{'"
+    TC_END_OBJ -> "end of the object '}'"
+    TC_BEGIN_LIST -> "start of the array '['"
+    TC_END_LIST -> "end of the array ']'"
+    TC_EOF -> "end of the input"
+    TC_INVALID -> "invalid token"
+    else -> "valid token" // should never happen
+}
 
 // object instead of @SharedImmutable because there is mutual initialization in [initC2ESC] and [initC2TC]
 internal object CharMappings {
@@ -135,7 +149,7 @@ internal abstract class AbstractJsonLexer {
     protected abstract val source: CharSequence
 
     @JvmField
-    protected var currentPosition: Int = 0 // position in source
+    internal var currentPosition: Int = 0 // position in source
 
     @JvmField
     val path = JsonPath()
@@ -200,28 +214,23 @@ internal abstract class AbstractJsonLexer {
     }
 
     protected fun unexpectedToken(expected: Char) {
-        --currentPosition // To properly handle null
-        if (currentPosition >= 0 && expected == STRING && consumeStringLenient() == NULL) {
-            fail("Expected string literal but 'null' literal was found", currentPosition - 4, coerceInputValuesHint)
+        if (currentPosition > 0 && expected == STRING) {
+            val inputLiteral = withPositionRollback {
+                currentPosition--
+                consumeStringLenient()
+            }
+            if (inputLiteral == NULL)
+                fail("Expected string literal but 'null' literal was found", currentPosition - 1, coerceInputValuesHint)
         }
         fail(charToTokenClass(expected))
     }
 
-    internal fun fail(expectedToken: Byte): Nothing {
-        // We know that the token was consumed prior to this call
+    internal fun fail(expectedToken: Byte, wasConsumed: Boolean = true): Nothing {
         // Slow path, never called in normal code, can avoid optimizing it
-        val expected = when (expectedToken) {
-            TC_STRING -> "quotation mark '\"'"
-            TC_COMMA -> "comma ','"
-            TC_COLON -> "semicolon ':'"
-            TC_BEGIN_OBJ -> "start of the object '{'"
-            TC_END_OBJ -> "end of the object '}'"
-            TC_BEGIN_LIST -> "start of the array '['"
-            TC_END_LIST -> "end of the array ']'"
-            else -> "valid token" // should never happen
-        }
-        val s = if (currentPosition == source.length || currentPosition <= 0) "EOF" else source[currentPosition - 1].toString()
-        fail("Expected $expected, but had '$s' instead", currentPosition - 1)
+        val expected = tokenDescription(expectedToken)
+        val position = if (wasConsumed) currentPosition - 1 else currentPosition
+        val s = if (currentPosition == source.length || position < 0) "EOF" else source[position].toString()
+        fail("Expected $expected, but had '$s' instead", position)
     }
 
     fun peekNextToken(): Byte {
@@ -244,25 +253,28 @@ internal abstract class AbstractJsonLexer {
 
     /**
      * Tries to consume `null` token from input.
-     * Returns `true` if the next 4 chars in input are not `null`,
-     * `false` otherwise and consumes it.
+     * Returns `false` if the next 4 chars in input are not `null`,
+     * `true` otherwise and consumes it if [doConsume] is `true`.
      */
-    fun tryConsumeNotNull(): Boolean {
+    fun tryConsumeNull(doConsume: Boolean = true): Boolean {
         var current = skipWhitespaces()
         current = prefetchOrEof(current)
         // Cannot consume null due to EOF, maybe something else
         val len = source.length - current
-        if (len < 4 || current == -1) return true
+        if (len < 4 || current == -1) return false
         for (i in 0..3) {
-            if (NULL[i] != source[current + i]) return true
+            if (NULL[i] != source[current + i]) return false
         }
         /*
          * If we're in lenient mode, this might be the string with 'null' prefix,
          * distinguish it from 'null'
          */
-        if (len > 4 && charToTokenClass(source[current + 4]) == TC_OTHER) return true
-        currentPosition = current + 4
-        return false
+        if (len > 4 && charToTokenClass(source[current + 4]) == TC_OTHER) return false
+
+        if (doConsume) {
+            currentPosition = current + 4
+        }
+        return true
     }
 
     open fun skipWhitespaces(): Int {
@@ -283,6 +295,8 @@ internal abstract class AbstractJsonLexer {
         return current
     }
 
+    abstract fun peekLeadingMatchingValue(keyToMatch: String, isLenient: Boolean): String?
+
     fun peekString(isLenient: Boolean): String? {
         val token = peekNextToken()
         val string = if (isLenient) {
@@ -296,6 +310,10 @@ internal abstract class AbstractJsonLexer {
         return string
     }
 
+    fun discardPeeked() {
+        peekedString = null
+    }
+
     open fun indexOf(char: Char, startPos: Int) = source.indexOf(char, startPos)
     open fun substring(startPos: Int, endPos: Int) =  source.substring(startPos, endPos)
 
@@ -304,6 +322,58 @@ internal abstract class AbstractJsonLexer {
      * is no need to lookup peeked string.
      */
     abstract fun consumeKeyString(): String
+
+    private fun insideString(isLenient: Boolean, char: Char): Boolean = if (isLenient) {
+        charToTokenClass(char) == TC_OTHER
+    } else {
+        char != STRING
+    }
+
+    open fun consumeStringChunked(isLenient: Boolean, consumeChunk: (stringChunk: String) -> Unit) { // open to allow simpler implementations (i.e. StringJsonLexer)
+        val nextToken = peekNextToken()
+        if (isLenient && nextToken != TC_OTHER) return // noting to consume
+
+        if (!isLenient) {
+            consumeNextToken(STRING)
+        }
+        var currentPosition = this.currentPosition
+        var lastPosition = currentPosition
+        var char = source[currentPosition] // Avoid two range checks visible in the profiler
+        var usedAppend = false
+        while (insideString(isLenient, char)) {
+            if (!isLenient && char == STRING_ESC) { // handle escaping only in non-lenient mode
+                usedAppend = true
+                currentPosition = prefetchOrEof(appendEscape(lastPosition, currentPosition))
+                lastPosition = currentPosition
+            } else {
+                currentPosition++
+            }
+            if (currentPosition >= source.length) {
+                // end of chunk
+                writeRange(lastPosition, currentPosition, usedAppend, consumeChunk)
+                usedAppend = false
+                currentPosition = prefetchOrEof(currentPosition)
+                if (currentPosition == -1)
+                    fail("EOF", currentPosition)
+                lastPosition = currentPosition
+            }
+            char = source[currentPosition]
+        }
+        writeRange(lastPosition, currentPosition, usedAppend, consumeChunk)
+        this.currentPosition = currentPosition
+        if (!isLenient) {
+            consumeNextToken(STRING)
+        }
+    }
+
+    private fun writeRange(fromIndex: Int, toIndex: Int, currentChunkHasEscape: Boolean, consumeChunk: (stringChunk: String) -> Unit) {
+        if (currentChunkHasEscape) {
+            consumeChunk(decodedString(fromIndex, toIndex))
+        } else {
+            consumeChunk(substring(fromIndex, toIndex))
+        }
+    }
+
 
     fun consumeString(): String {
         if (peekedString != null) {
@@ -324,7 +394,7 @@ internal abstract class AbstractJsonLexer {
                 usedAppend = true
                 currentPosition = prefetchOrEof(appendEscape(lastPosition, currentPosition))
                 if (currentPosition == -1)
-                    fail("EOF", currentPosition)
+                    fail("Unexpected EOF", currentPosition)
                 lastPosition = currentPosition
             } else if (++currentPosition >= source.length) {
                 usedAppend = true
@@ -332,7 +402,7 @@ internal abstract class AbstractJsonLexer {
                 appendRange(lastPosition, currentPosition)
                 currentPosition = prefetchOrEof(currentPosition)
                 if (currentPosition == -1)
-                    fail("EOF", currentPosition)
+                    fail("Unexpected EOF", currentPosition)
                 lastPosition = currentPosition
             }
             char = source[currentPosition]
@@ -545,11 +615,32 @@ internal abstract class AbstractJsonLexer {
             false
         }
         var accumulator = 0L
+        var exponentAccumulator = 0L
         var isNegative = false
+        var isExponentPositive = false
+        var hasExponent = false
         val start = current
-        var hasChars = true
-        while (hasChars) {
+        while (current != source.length) {
             val ch: Char = source[current]
+            if ((ch == 'e' || ch == 'E') && !hasExponent) {
+                if (current == start) fail("Unexpected symbol $ch in numeric literal")
+                isExponentPositive = true
+                hasExponent = true
+                ++current
+                continue
+            }
+            if (ch == '-' && hasExponent) {
+                if (current == start) fail("Unexpected symbol '-' in numeric literal")
+                isExponentPositive = false
+                ++current
+                continue
+            }
+            if (ch == '+' && hasExponent) {
+                if (current == start) fail("Unexpected symbol '+' in numeric literal")
+                isExponentPositive = true
+                ++current
+                continue
+            }
             if (ch == '-') {
                 if (current != start) fail("Unexpected symbol '-' in numeric literal")
                 isNegative = true
@@ -559,12 +650,16 @@ internal abstract class AbstractJsonLexer {
             val token = charToTokenClass(ch)
             if (token != TC_OTHER) break
             ++current
-            hasChars = current != source.length
             val digit = ch - '0'
             if (digit !in 0..9) fail("Unexpected symbol '$ch' in numeric literal")
+            if (hasExponent) {
+                exponentAccumulator = exponentAccumulator * 10 + digit
+                continue
+            }
             accumulator = accumulator * 10 - digit
             if (accumulator > 0) fail("Numeric value overflow")
         }
+        val hasChars = current != start
         if (start == current || (isNegative && start == current - 1)) {
             fail("Expected numeric literal")
         }
@@ -574,6 +669,19 @@ internal abstract class AbstractJsonLexer {
             ++current
         }
         currentPosition = current
+
+        fun calculateExponent(exponentAccumulator: Long, isExponentPositive: Boolean): Double = when (isExponentPositive) {
+            false -> 10.0.pow(-exponentAccumulator.toDouble())
+            true -> 10.0.pow(exponentAccumulator.toDouble())
+        }
+
+        if (hasExponent) {
+            val doubleAccumulator  = accumulator.toDouble() * calculateExponent(exponentAccumulator, isExponentPositive)
+            if (doubleAccumulator > Long.MAX_VALUE || doubleAccumulator < Long.MIN_VALUE) fail("Numeric value overflow")
+            if (floor(doubleAccumulator) != doubleAccumulator) fail("Can't convert $doubleAccumulator to Long")
+            accumulator = doubleAccumulator.toLong()
+        }
+
         return when {
             isNegative -> accumulator
             accumulator != Long.MIN_VALUE -> -accumulator
@@ -643,5 +751,14 @@ internal abstract class AbstractJsonLexer {
         }
 
         currentPosition = current + literalSuffix.length
+    }
+
+    private inline fun <T> withPositionRollback(action: () -> T): T {
+        val snapshot = currentPosition
+        try {
+            return action()
+        } finally {
+            currentPosition = snapshot
+        }
     }
 }

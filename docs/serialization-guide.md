@@ -49,6 +49,8 @@ Once the project is set up, we can start serializing some classes.
   * <a name='deserializing-collections'></a>[Deserializing collections](builtin-classes.md#deserializing-collections)
   * <a name='maps'></a>[Maps](builtin-classes.md#maps)
   * <a name='unit-and-singleton-objects'></a>[Unit and singleton objects](builtin-classes.md#unit-and-singleton-objects)
+  * <a name='duration'></a>[Duration](builtin-classes.md#duration)
+* <a name='nothing'></a>[Nothing](builtin-classes.md#nothing)
 <!--- END -->
 
 **Chapter 3.** [Serializers](serializers.md)
@@ -69,7 +71,9 @@ Once the project is set up, we can start serializing some classes.
   * <a name='serializing-3rd-party-classes'></a>[Serializing 3rd party classes](serializers.md#serializing-3rd-party-classes)
   * <a name='passing-a-serializer-manually'></a>[Passing a serializer manually](serializers.md#passing-a-serializer-manually)
   * <a name='specifying-serializer-on-a-property'></a>[Specifying serializer on a property](serializers.md#specifying-serializer-on-a-property)
+  * <a name='specifying-serializer-for-a-particular-type'></a>[Specifying serializer for a particular type](serializers.md#specifying-serializer-for-a-particular-type)
   * <a name='specifying-serializers-for-a-file'></a>[Specifying serializers for a file](serializers.md#specifying-serializers-for-a-file)
+  * <a name='specifying-serializer-globally-using-typealias'></a>[Specifying serializer globally using typealias](serializers.md#specifying-serializer-globally-using-typealias)
   * <a name='custom-serializers-for-a-generic-type'></a>[Custom serializers for a generic type](serializers.md#custom-serializers-for-a-generic-type)
   * <a name='format-specific-serializers'></a>[Format-specific serializers](serializers.md#format-specific-serializers)
 * <a name='contextual-serialization'></a>[Contextual serialization](serializers.md#contextual-serialization)
@@ -116,11 +120,17 @@ Once the project is set up, we can start serializing some classes.
   * <a name='allowing-structured-map-keys'></a>[Allowing structured map keys](json.md#allowing-structured-map-keys)
   * <a name='allowing-special-floating-point-values'></a>[Allowing special floating-point values](json.md#allowing-special-floating-point-values)
   * <a name='class-discriminator-for-polymorphism'></a>[Class discriminator for polymorphism](json.md#class-discriminator-for-polymorphism)
+  * <a name='class-discriminator-output-mode'></a>[Class discriminator output mode](json.md#class-discriminator-output-mode)
+  * <a name='decoding-enums-in-a-case-insensitive-manner'></a>[Decoding enums in a case-insensitive manner](json.md#decoding-enums-in-a-case-insensitive-manner)
+  * <a name='global-naming-strategy'></a>[Global naming strategy](json.md#global-naming-strategy)
 * <a name='json-elements'></a>[Json elements](json.md#json-elements)
   * <a name='parsing-to-json-element'></a>[Parsing to Json element](json.md#parsing-to-json-element)
   * <a name='types-of-json-elements'></a>[Types of Json elements](json.md#types-of-json-elements)
   * <a name='json-element-builders'></a>[Json element builders](json.md#json-element-builders)
   * <a name='decoding-json-elements'></a>[Decoding Json elements](json.md#decoding-json-elements)
+  * <a name='encoding-literal-json-content-experimental'></a>[Encoding literal Json content (experimental)](json.md#encoding-literal-json-content-experimental)
+    * <a name='serializing-large-decimal-numbers'></a>[Serializing large decimal numbers](json.md#serializing-large-decimal-numbers)
+    * <a name='using-jsonunquotedliteral-to-create-a-literal-unquoted-value-of-null-is-forbidden'></a>[Using `JsonUnquotedLiteral` to create a literal unquoted value of `null` is forbidden](json.md#using-jsonunquotedliteral-to-create-a-literal-unquoted-value-of-null-is-forbidden)
 * <a name='json-transformations'></a>[Json transformations](json.md#json-transformations)
   * <a name='array-wrapping'></a>[Array wrapping](json.md#array-wrapping)
   * <a name='array-unwrapping'></a>[Array unwrapping](json.md#array-unwrapping)
@@ -153,10 +163,10 @@ Once the project is set up, we can start serializing some classes.
   * <a name='format-specific-types'></a>[Format-specific types](formats.md#format-specific-types)
 <!--- END -->
 
-**Appendix A.** [Serialization and inline classes (experimental, IR-specific)](inline-classes.md)
+**Appendix A.** [Serialization and value classes (IR-only)](value-classes.md)
 
-<!--- TOC_REF inline-classes.md -->
-* <a name='serializable-inline-classes'></a>[Serializable inline classes](inline-classes.md#serializable-inline-classes)
-* <a name='unsigned-types-support-json-only'></a>[Unsigned types support (JSON only)](inline-classes.md#unsigned-types-support-json-only)
-* <a name='using-inline-classes-in-your-custom-serializers'></a>[Using inline classes in your custom serializers](inline-classes.md#using-inline-classes-in-your-custom-serializers)
+<!--- TOC_REF value-classes.md -->
+* <a name='serializable-value-classes'></a>[Serializable value classes](value-classes.md#serializable-value-classes)
+* <a name='unsigned-types-support-json-only'></a>[Unsigned types support (JSON only)](value-classes.md#unsigned-types-support-json-only)
+* <a name='using-value-classes-in-your-custom-serializers'></a>[Using value classes in your custom serializers](value-classes.md#using-value-classes-in-your-custom-serializers)
 <!--- END -->

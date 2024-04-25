@@ -4,8 +4,10 @@
 
 package kotlinx.serialization
 
-import kotlinx.serialization.test.noJsLegacy
+import kotlinx.serialization.modules.*
+import kotlinx.serialization.test.*
 import kotlin.test.*
+import kotlin.time.*
 
 class CachedSerializersTest {
     @Serializable
@@ -20,18 +22,60 @@ class CachedSerializersTest {
     @Serializable
     abstract class Abstract
 
+    @Serializable
+    enum class SerializableEnum {A, B}
+
+    @SerialInfo
+    annotation class MyAnnotation(val x: Int)
+
+    @Serializable
+    enum class SerializableMarkedEnum {
+        @SerialName("first")
+        @MyAnnotation(1)
+        C,
+        @MyAnnotation(2)
+        D
+    }
+
     @Test
-    fun testObjectSerializersAreSame() = noJsLegacy {
+    fun testObjectSerializersAreSame() {
         assertSame(Object.serializer(), Object.serializer())
     }
 
     @Test
-    fun testSealedSerializersAreSame() = noJsLegacy {
+    fun testSerializableEnumSerializersAreSame() {
+        assertSame(SerializableEnum.serializer(), SerializableEnum.serializer())
+    }
+
+    @Test
+    fun testSerializableMarkedEnumSerializersAreSame() {
+        assertSame(SerializableMarkedEnum.serializer(), SerializableMarkedEnum.serializer())
+    }
+
+    @Test
+    fun testSealedSerializersAreSame() {
         assertSame(SealedParent.serializer(), SealedParent.serializer())
     }
 
     @Test
-    fun testAbstractSerializersAreSame() = noJsLegacy {
+    fun testAbstractSerializersAreSame() {
         assertSame(Abstract.serializer(), Abstract.serializer())
     }
+
+
+    @OptIn(ExperimentalTime::class)
+    @Test
+    fun testSerializersAreIntrinsified() = jvmOnly {
+        val m = SerializersModule {  }
+        val direct = measureTime {
+            Object.serializer()
+        }
+        val directMs = direct.inWholeMicroseconds
+        val indirect = measureTime {
+            m.serializer<Object>()
+        }
+        val indirectMs = indirect.inWholeMicroseconds
+        if (indirectMs > directMs + (directMs / 4)) error("Direct ($directMs) and indirect ($indirectMs) times are too far apart")
+    }
 }
+

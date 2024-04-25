@@ -55,11 +55,12 @@ import kotlin.reflect.*
  *
  * // Now both statements will yield different subclasses of Payment:
  *
- * Json.parse(PaymentSerializer, """{"amount":"1.0","date":"03.02.2020"}""")
- * Json.parse(PaymentSerializer, """{"amount":"2.0","date":"03.02.2020","reason":"complaint"}""")
+ * Json.decodeFromString(PaymentSerializer, """{"amount":"1.0","date":"03.02.2020"}""")
+ * Json.decodeFromString(PaymentSerializer, """{"amount":"2.0","date":"03.02.2020","reason":"complaint"}""")
  * ```
  *
- * @param T A root class for all classes that could be possibly encountered during serialization and deserialization.
+ * @param T A root type for all classes that could be possibly encountered during serialization and deserialization.
+ * Must be non-final class or interface.
  * @param baseClass A class token for [T].
  */
 @OptIn(ExperimentalSerializationApi::class)
@@ -96,7 +97,7 @@ public abstract class JsonContentPolymorphicSerializer<T : Any>(private val base
     /**
      * Determines a particular strategy for deserialization by looking on a parsed JSON [element].
      */
-    protected abstract fun selectDeserializer(element: JsonElement): DeserializationStrategy<out T>
+    protected abstract fun selectDeserializer(element: JsonElement): DeserializationStrategy<T>
 
     private fun throwSubtypeNotRegistered(subClass: KClass<*>, baseClass: KClass<*>): Nothing {
         val subClassName = subClass.simpleName ?: "$subClass"

@@ -6,13 +6,17 @@ import kotlinx.serialization.json.*
 import kotlinx.serialization.encoding.*
 import kotlinx.serialization.descriptors.*
 
-// NOT @Serializable
-class Project(val name: String, val language: String)
-                           
-@Serializer(forClass = Project::class)
-object ProjectSerializer
+import java.util.Date
+import java.text.SimpleDateFormat
+
+@Serializable          
+class ProgrammingLanguage(
+    val name: String,
+    @Contextual 
+    val stableReleaseDate: Date
+)
 
 fun main() {
-    val data = Project("kotlinx.serialization", "Kotlin")
-    println(Json.encodeToString(ProjectSerializer, data))    
+    val data = ProgrammingLanguage("Kotlin", SimpleDateFormat("yyyy-MM-ddX").parse("2016-02-15+00"))
+    println(Json.encodeToString(data))
 }

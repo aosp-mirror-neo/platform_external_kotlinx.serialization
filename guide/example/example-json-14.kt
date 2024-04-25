@@ -4,20 +4,12 @@ package example.exampleJson14
 import kotlinx.serialization.*
 import kotlinx.serialization.json.*
 
+@Serializable
+data class Project(val projectName: String, val projectOwner: String)
+
+val format = Json { namingStrategy = JsonNamingStrategy.SnakeCase }
+
 fun main() {
-    val element = buildJsonObject {
-        put("name", "kotlinx.serialization")
-        putJsonObject("owner") {
-            put("name", "kotlin")
-        }
-        putJsonArray("forks") {
-            addJsonObject {
-                put("votes", 42)
-            }
-            addJsonObject {
-                put("votes", 9000)
-            }
-        }
-    }
-    println(element)
+    val project = format.decodeFromString<Project>("""{"project_name":"kotlinx.coroutines", "project_owner":"Kotlin"}""")
+    println(format.encodeToString(project.copy(projectName = "kotlinx.serialization")))
 }
