@@ -6,23 +6,30 @@ import kotlinx.serialization.json.*
 import kotlinx.serialization.encoding.*
 import kotlinx.serialization.descriptors.*
 
-// NOT @Serializable, will use external serializer
-class Project(
-    // val in a primary constructor -- serialized
-    val name: String
-) {
-    var stars: Int = 0 // property with getter & setter -- serialized
- 
-    val path: String // getter only -- not serialized
-        get() = "kotlin/$name"                                         
+import kotlinx.serialization.modules.*
+import java.util.Date
+import java.text.SimpleDateFormat
+  
+object DateAsLongSerializer : KSerializer<Date> {
+    override val descriptor: SerialDescriptor = PrimitiveSerialDescriptor("Date", PrimitiveKind.LONG)
+    override fun serialize(encoder: Encoder, value: Date) = encoder.encodeLong(value.time)
+    override fun deserialize(decoder: Decoder): Date = Date(decoder.decodeLong())
+}
 
-    private var locked: Boolean = false // private, not accessible -- not serialized 
-}              
+@Serializable          
+class ProgrammingLanguage(
+    val name: String,
+    @Contextual 
+    val stableReleaseDate: Date
+)
 
-@Serializer(forClass = Project::class)
-object ProjectSerializer
+private val module = SerializersModule { 
+    contextual(DateAsLongSerializer)
+}
+
+val format = Json { serializersModule = module }
 
 fun main() {
-    val data = Project("kotlinx.serialization").apply { stars = 9000 }
-    println(Json.encodeToString(ProjectSerializer, data))
+    val data = ProgrammingLanguage("Kotlin", SimpleDateFormat("yyyy-MM-ddX").parse("2016-02-15+00"))
+    println(format.encodeToString(data))
 }

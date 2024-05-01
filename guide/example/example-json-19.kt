@@ -4,33 +4,20 @@ package example.exampleJson19
 import kotlinx.serialization.*
 import kotlinx.serialization.json.*
 
-import kotlinx.serialization.builtins.*
+import java.math.BigDecimal
 
-@Serializable
-abstract class Project {
-    abstract val name: String
-}
-
-@Serializable
-data class BasicProject(override val name: String): Project()
-
-
-@Serializable
-data class OwnedProject(override val name: String, val owner: String) : Project()
-
-object ProjectSerializer : JsonContentPolymorphicSerializer<Project>(Project::class) {
-    override fun selectDeserializer(element: JsonElement) = when {
-        "owner" in element.jsonObject -> OwnedProject.serializer()
-        else -> BasicProject.serializer()
-    }
-}
+val format = Json { prettyPrint = true }
 
 fun main() {
-    val data = listOf(
-        OwnedProject("kotlinx.serialization", "kotlin"),
-        BasicProject("example")
-    )
-    val string = Json.encodeToString(ListSerializer(ProjectSerializer), data)
-    println(string)
-    println(Json.decodeFromString(ListSerializer(ProjectSerializer), string))
+    val pi = BigDecimal("3.141592653589793238462643383279")
+    
+    val piJsonDouble = JsonPrimitive(pi.toDouble())
+    val piJsonString = JsonPrimitive(pi.toString())
+  
+    val piObject = buildJsonObject {
+        put("pi_double", piJsonDouble)
+        put("pi_string", piJsonString)
+    }
+
+    println(format.encodeToString(piObject))
 }

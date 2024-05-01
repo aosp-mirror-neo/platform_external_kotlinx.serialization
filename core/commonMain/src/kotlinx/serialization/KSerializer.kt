@@ -5,7 +5,6 @@
 package kotlinx.serialization
 
 import kotlinx.serialization.descriptors.*
-import kotlinx.serialization.descriptors.elementNames
 import kotlinx.serialization.encoding.*
 
 /**
@@ -51,6 +50,16 @@ import kotlinx.serialization.encoding.*
  * ```
  *
  * Deserialization process is symmetric and uses [Decoder].
+ *
+ * ### Exception types for `KSerializer` implementation
+ *
+ * Implementations of [serialize] and [deserialize] methods are allowed to throw
+ * any subtype of [IllegalArgumentException] in order to indicate serialization
+ * and deserialization errors.
+ *
+ * For serializer implementations, it is recommended to throw subclasses of [SerializationException] for
+ * any serialization-specific errors related to invalid or unsupported format of the data
+ * and [IllegalStateException] for errors during validation of the data.
  */
 public interface KSerializer<T> : SerializationStrategy<T>, DeserializationStrategy<T> {
     /**
@@ -106,6 +115,10 @@ public interface SerializationStrategy<in T> {
      *     // don't encode 'alwaysZero' property because we decided to do so
      * } // end of the structure
      * ```
+     *
+     * @throws SerializationException in case of any serialization-specific error
+     * @throws IllegalArgumentException if the supplied input does not comply encoder's specification
+     * @see KSerializer for additional information about general contracts and exception specifics
      */
     public fun serialize(encoder: Encoder, value: T)
 }
@@ -126,7 +139,7 @@ public interface SerializationStrategy<in T> {
  *
  * For a more detailed explanation of the serialization process, please refer to [KSerializer] documentation.
  */
-public interface DeserializationStrategy<T> {
+public interface DeserializationStrategy<out T> {
     /**
      * Describes the structure of the serializable representation of [T], that current
      * deserializer is able to deserialize.
@@ -171,7 +184,11 @@ public interface DeserializationStrategy<T> {
      *     return MyData(int, list, alwaysZero = 0L)
      * }
      * ```
+     *
+     * @throws MissingFieldException if non-optional fields were not found during deserialization
+     * @throws SerializationException in case of any deserialization-specific error
+     * @throws IllegalArgumentException if the decoded input is not a valid instance of [T]
+     * @see KSerializer for additional information about general contracts and exception specifics
      */
     public fun deserialize(decoder: Decoder): T
 }
-

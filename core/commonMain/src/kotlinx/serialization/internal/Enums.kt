@@ -49,20 +49,79 @@ internal class EnumDescriptor(
     }
 }
 
-// Used for enums that are not explicitly serializable by the plugin
+@OptIn(ExperimentalSerializationApi::class)
+@InternalSerializationApi
+internal fun <T : Enum<T>> createSimpleEnumSerializer(serialName: String, values: Array<T>): KSerializer<T> {
+    return EnumSerializer(serialName, values)
+}
+
+/**
+ * The function has a bug (#2121) and should not be used by new (1.8.20+) plugins. It is preserved for backward compatibility with previously compiled enum classes.
+ */
+@OptIn(ExperimentalSerializationApi::class)
+@InternalSerializationApi
+internal fun <T : Enum<T>> createMarkedEnumSerializer(
+    serialName: String,
+    values: Array<T>,
+    names: Array<String?>,
+    annotations: Array<Array<Annotation>?>
+): KSerializer<T> {
+    val descriptor = EnumDescriptor(serialName, values.size)
+    values.forEachIndexed { i, v ->
+        val elementName = names.getOrNull(i) ?: v.name
+        descriptor.addElement(elementName)
+        annotations.getOrNull(i)?.forEach {
+            descriptor.pushAnnotation(it)
+        }
+    }
+
+    return EnumSerializer(serialName, values, descriptor)
+}
+
+@OptIn(ExperimentalSerializationApi::class)
+@InternalSerializationApi
+internal fun <T : Enum<T>> createAnnotatedEnumSerializer(
+    serialName: String,
+    values: Array<T>,
+    names: Array<String?>,
+    entryAnnotations: Array<Array<Annotation>?>,
+    classAnnotations: Array<Annotation>?
+): KSerializer<T> {
+    val descriptor = EnumDescriptor(serialName, values.size)
+    classAnnotations?.forEach {
+        descriptor.pushClassAnnotation(it)
+    }
+    values.forEachIndexed { i, v ->
+        val elementName = names.getOrNull(i) ?: v.name
+        descriptor.addElement(elementName)
+        entryAnnotations.getOrNull(i)?.forEach {
+            descriptor.pushAnnotation(it)
+        }
+    }
+
+    return EnumSerializer(serialName, values, descriptor)
+}
+
 @PublishedApi
 @OptIn(ExperimentalSerializationApi::class)
 internal class EnumSerializer<T : Enum<T>>(
     serialName: String,
     private val values: Array<T>
 ) : KSerializer<T> {
+    private var overriddenDescriptor: SerialDescriptor? = null
 
-    override val descriptor: SerialDescriptor = buildSerialDescriptor(serialName, SerialKind.ENUM) {
-        values.forEach {
-            val fqn = "$serialName.${it.name}"
-            val enumMemberDescriptor = buildSerialDescriptor(fqn, StructureKind.OBJECT)
-            element(it.name, enumMemberDescriptor)
-        }
+    internal constructor(serialName: String, values: Array<T>, descriptor: SerialDescriptor) : this(serialName, values) {
+        overriddenDescriptor = descriptor
+    }
+
+    override val descriptor: SerialDescriptor by lazy {
+        overriddenDescriptor ?: createUnmarkedDescriptor(serialName)
+    }
+
+    private fun createUnmarkedDescriptor(serialName: String): SerialDescriptor {
+        val d = EnumDescriptor(serialName, values.size)
+        values.forEach { d.addElement(it.name) }
+        return d
     }
 
     override fun serialize(encoder: Encoder, value: T) {

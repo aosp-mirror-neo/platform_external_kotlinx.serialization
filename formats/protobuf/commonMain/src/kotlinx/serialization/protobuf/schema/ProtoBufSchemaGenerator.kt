@@ -190,7 +190,7 @@ public object ProtoBufSchemaGenerator {
 
 
             val annotations = messageDescriptor.getElementAnnotations(index)
-            val number = annotations.filterIsInstance<ProtoNumber>().singleOrNull()?.number ?: index + 1
+            val number = annotations.filterIsInstance<ProtoNumber>().singleOrNull()?.number ?: (index + 1)
             if (!usedNumbers.add(number)) {
                 throw IllegalArgumentException("Field number $number is repeated in the class with serial name ${messageDescriptor.serialName}")
             }
@@ -216,29 +216,34 @@ public object ProtoBufSchemaGenerator {
         val messageDescriptor = messageType.descriptor
 
         val fieldDescriptor = messageDescriptor.getElementDescriptor(index)
+        var unwrappedFieldDescriptor = fieldDescriptor
+        while (unwrappedFieldDescriptor.isInline) {
+            unwrappedFieldDescriptor = unwrappedFieldDescriptor.getElementDescriptor(0)
+        }
+
         val nestedTypes: List<TypeDefinition>
         val typeName: String = when {
             messageDescriptor.isSealedPolymorphic && index == 1 -> {
                 appendLine("  // decoded as message with one of these types:")
-                nestedTypes = fieldDescriptor.elementDescriptors.map { TypeDefinition(it) }.toList()
+                nestedTypes = unwrappedFieldDescriptor.elementDescriptors.map { TypeDefinition(it) }.toList()
                 nestedTypes.forEachIndexed { _, childType ->
                     append("  //   message ").append(childType.descriptor.messageOrEnumName).append(", serial name '")
                         .append(removeLineBreaks(childType.descriptor.serialName)).appendLine('\'')
                 }
-                fieldDescriptor.scalarTypeName()
+                unwrappedFieldDescriptor.scalarTypeName()
             }
-            fieldDescriptor.isProtobufScalar -> {
+            unwrappedFieldDescriptor.isProtobufScalar -> {
                 nestedTypes = emptyList()
-                fieldDescriptor.scalarTypeName(messageDescriptor.getElementAnnotations(index))
+                unwrappedFieldDescriptor.scalarTypeName(messageDescriptor.getElementAnnotations(index))
             }
-            fieldDescriptor.isOpenPolymorphic -> {
+            unwrappedFieldDescriptor.isOpenPolymorphic -> {
                 nestedTypes = listOf(SyntheticPolymorphicType)
                 SyntheticPolymorphicType.descriptor.serialName
             }
             else -> {
                 // enum or regular message
-                nestedTypes = listOf(TypeDefinition(fieldDescriptor))
-                fieldDescriptor.messageOrEnumName
+                nestedTypes = listOf(TypeDefinition(unwrappedFieldDescriptor))
+                unwrappedFieldDescriptor.messageOrEnumName
             }
         }
 
@@ -319,19 +324,35 @@ public object ProtoBufSchemaGenerator {
         }
         val safeSerialName = removeLineBreaks(enumDescriptor.serialName)
         if (safeSerialName != enumName) {
-            append("// serial name '").append(enumName).appendLine('\'')
+            append("// serial name '").append(safeSerialName).appendLine('\'')
         }
 
         append("enum ").append(enumName).appendLine(" {")
 
-        enumDescriptor.elementDescriptors.forEachIndexed { number, element ->
+        val usedNumbers: MutableSet<Int> = mutableSetOf()
+        val duplicatedNumbers: MutableSet<Int> = mutableSetOf()
+        enumDescriptor.elementDescriptors.forEachIndexed { index, element ->
             val elementName = element.protobufEnumElementName
             elementName.checkIsValidIdentifier {
                 "The enum element name '$elementName' is invalid in the " +
                         "protobuf schema. Serial name of the enum class '${enumDescriptor.serialName}'"
             }
+
+            val annotations = enumDescriptor.getElementAnnotations(index)
+            val number = annotations.filterIsInstance<ProtoNumber>().singleOrNull()?.number ?: index
+            if (!usedNumbers.add(number)) {
+                duplicatedNumbers.add(number)
+            }
+
             append("  ").append(elementName).append(" = ").append(number).appendLine(';')
         }
+        if (duplicatedNumbers.isNotEmpty()) {
+            throw IllegalArgumentException(
+                "The class with serial name ${enumDescriptor.serialName} has duplicate " +
+                    "elements with numbers $duplicatedNumbers"
+            )
+        }
+
         appendLine('}')
     }
 
@@ -417,6 +438,7 @@ public object ProtoBufSchemaGenerator {
         }
     }
 
+    @SuppressAnimalSniffer // Boolean.hashCode(boolean) in compiler-generated hashCode implementation
     private data class TypeDefinition(
         val descriptor: SerialDescriptor,
         val isSynthetic: Boolean = false,

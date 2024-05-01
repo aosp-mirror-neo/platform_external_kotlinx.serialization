@@ -81,7 +81,7 @@ private class DynamicObjectEncoder(
         when {
             current.writeMode == WriteMode.MAP -> currentElementIsMapKey = current.index % 2 == 0
             current.writeMode == WriteMode.LIST && descriptor.kind is PolymorphicKind -> currentName = index.toString()
-            else -> currentName = descriptor.getElementName(index)
+            else -> currentName = descriptor.getJsonElementName(json, index)
         }
 
         return true
@@ -257,7 +257,7 @@ private class DynamicPrimitiveEncoder(
         if (!json.configuration.isLenient && abs(value) > MAX_SAFE_INTEGER) {
             throw IllegalArgumentException(
                 "$value can't be deserialized to number due to a potential precision loss. " +
-                        "Use the JsonConfiguration option isLenient to serialise anyway"
+                        "Use the JsonConfiguration option isLenient to serialize anyway"
             )
         }
         encodeValue(asDouble)

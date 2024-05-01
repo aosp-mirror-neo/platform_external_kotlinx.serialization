@@ -1,8 +1,6 @@
 /*
- * Copyright 2017-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license.
+ * Copyright 2017-2023 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license.
  */
-
-@file:Suppress("NO_EXPLICIT_VISIBILITY_IN_API_MODE_WARNING") // Parameters of annotations should probably be ignored, too
 
 package kotlinx.serialization
 
@@ -67,11 +65,42 @@ import kotlin.reflect.*
  * @see UseSerializers
  * @see Serializer
  */
+@MustBeDocumented
 @Target(AnnotationTarget.PROPERTY, AnnotationTarget.CLASS, AnnotationTarget.TYPE)
 //@Retention(AnnotationRetention.RUNTIME) // Runtime is the default retention, also see KT-41082
 public annotation class Serializable(
     val with: KClass<out KSerializer<*>> = KSerializer::class // Default value indicates that auto-generated serializer is used
 )
+
+/**
+ * The meta-annotation for adding [Serializable] behaviour to user-defined annotations.
+ *
+ * Applying [MetaSerializable] to the annotation class `A` instructs the serialization plugin to treat annotation A
+ * as [Serializable]. In addition, all annotations marked with [MetaSerializable] are saved in the generated [SerialDescriptor]
+ * as if they are annotated with [SerialInfo].
+ *
+ * ```
+ * @MetaSerializable
+ * @Target(AnnotationTarget.CLASS)
+ * annotation class MySerializable(val data: String)
+ *
+ * @MySerializable("some_data")
+ * class MyData(val myData: AnotherData, val intProperty: Int, ...)
+ *
+ * val serializer = MyData.serializer()
+ * serializer.descriptor.annotations.filterIsInstance<MySerializable>().first().data // <- returns "some_data"
+ * ```
+ *
+ * @see Serializable
+ * @see SerialInfo
+ * @see UseSerializers
+ * @see Serializer
+ */
+@MustBeDocumented
+@Target(AnnotationTarget.ANNOTATION_CLASS)
+//@Retention(AnnotationRetention.RUNTIME) // Runtime is the default retention, also see KT-41082
+@ExperimentalSerializationApi
+public annotation class MetaSerializable
 
 /**
  * Instructs the serialization plugin to turn this class into serializer for specified class [forClass].
@@ -82,6 +111,7 @@ public annotation class Serializable(
  * Changes may include additional constraints on classes and objects marked with this annotation,
  * behavioural changes and even serialized shape of the class.
  */
+@MustBeDocumented
 @Target(AnnotationTarget.CLASS)
 @Retention(AnnotationRetention.BINARY)
 @ExperimentalSerializationApi
@@ -113,7 +143,11 @@ public annotation class Serializer(
  * // Prints "{"int":42}"
  * println(Json.encodeToString(CustomName(42)))
  * ```
+ *
+ * If a name of class or property is overridden with this annotation, original source code name is not available for the library.
+ * Tools like `JsonNamingStrategy` and `ProtoBufSchemaGenerator` would see and transform [value] from [SerialName] annotation.
  */
+@MustBeDocumented
 @Target(AnnotationTarget.PROPERTY, AnnotationTarget.CLASS)
 // @Retention(AnnotationRetention.RUNTIME) still runtime, but KT-41082
 public annotation class SerialName(val value: String)
@@ -121,14 +155,16 @@ public annotation class SerialName(val value: String)
 /**
  * Indicates that property must be present during deserialization process, despite having a default value.
  */
+@MustBeDocumented
 @Target(AnnotationTarget.PROPERTY)
 // @Retention(AnnotationRetention.RUNTIME) still runtime, but KT-41082
 public annotation class Required
 
 /**
  * Marks this property invisible for the whole serialization process, including [serial descriptors][SerialDescriptor].
- * Transient properties should have default values.
+ * Transient properties must have default values.
  */
+@MustBeDocumented
 @Target(AnnotationTarget.PROPERTY)
 // @Retention(AnnotationRetention.RUNTIME) still runtime, but KT-41082
 public annotation class Transient
@@ -154,6 +190,7 @@ public annotation class Transient
  * @see EncodeDefault.Mode.ALWAYS
  * @see EncodeDefault.Mode.NEVER
  */
+@MustBeDocumented
 @Target(AnnotationTarget.PROPERTY)
 @ExperimentalSerializationApi
 public annotation class EncodeDefault(val mode: Mode = Mode.ALWAYS) {
@@ -188,6 +225,7 @@ public annotation class EncodeDefault(val mode: Mode = Mode.ALWAYS) {
  * Keep in mind that Kotlin compiler prioritizes [function parameter target][AnnotationTarget.VALUE_PARAMETER] over [property target][AnnotationTarget.PROPERTY],
  * so serial info annotations used on constructor-parameters-as-properties without explicit declaration-site or use-site target are not preserved.
  */
+@MustBeDocumented
 @Target(AnnotationTarget.ANNOTATION_CLASS)
 @Retention(AnnotationRetention.BINARY)
 @ExperimentalSerializationApi
@@ -225,11 +263,11 @@ public annotation class SerialInfo
  * fun foo(): Int = Derived.serializer().descriptor.annotations.filterIsInstance<A>().single().value
  * ```
  */
+@MustBeDocumented
 @Target(AnnotationTarget.ANNOTATION_CLASS)
 @Retention(AnnotationRetention.BINARY)
 @ExperimentalSerializationApi
 public annotation class InheritableSerialInfo
-
 
 /**
  * Instructs the plugin to use [ContextualSerializer] on a given property or type.
@@ -285,6 +323,23 @@ public annotation class UseSerializers(vararg val serializerClasses: KClass<out 
 @Target(AnnotationTarget.PROPERTY, AnnotationTarget.TYPE, AnnotationTarget.CLASS)
 //@Retention(AnnotationRetention.RUNTIME) // Runtime is the default retention, also see KT-41082
 public annotation class Polymorphic
+
+/**
+ * Instructs the serialization plugin to keep automatically generated implementation of [KSerializer]
+ * for the current class if a custom serializer is specified at the same time `@Serializable(with=SomeSerializer::class)`.
+ *
+ * Automatically generated serializer is available via `generatedSerializer()` function in companion object of serializable class.
+ *
+ * Generated serializers allow to use custom serializers on classes from which other serializable classes are inherited.
+ *
+ * Used only with the [Serializable] annotation.
+ *
+ * A compiler version `2.0.0` and higher is required.
+ */
+@InternalSerializationApi
+@Target(AnnotationTarget.CLASS)
+@Retention(AnnotationRetention.RUNTIME)
+public annotation class KeepGeneratedSerializer
 
 /**
  * Marks declarations that are still **experimental** in kotlinx.serialization, which means that the design of the

@@ -4,56 +4,24 @@ package example.exampleJson20
 import kotlinx.serialization.*
 import kotlinx.serialization.json.*
 
-import kotlinx.serialization.descriptors.*
-import kotlinx.serialization.encoding.*
+import java.math.BigDecimal
 
-@Serializable(with = ResponseSerializer::class)
-sealed class Response<out T> {
-    data class Ok<out T>(val data: T) : Response<T>()
-    data class Error(val message: String) : Response<Nothing>()
-}
-
-class ResponseSerializer<T>(private val dataSerializer: KSerializer<T>) : KSerializer<Response<T>> {
-    override val descriptor: SerialDescriptor = buildSerialDescriptor("Response", PolymorphicKind.SEALED) {
-        element("Ok", buildClassSerialDescriptor("Ok") {
-            element<String>("message")
-        })
-        element("Error", dataSerializer.descriptor)
-    }
-
-    override fun deserialize(decoder: Decoder): Response<T> {
-        // Decoder -> JsonDecoder
-        require(decoder is JsonDecoder) // this class can be decoded only by Json
-        // JsonDecoder -> JsonElement
-        val element = decoder.decodeJsonElement()
-        // JsonElement -> value
-        if (element is JsonObject && "error" in element)
-            return Response.Error(element["error"]!!.jsonPrimitive.content)
-        return Response.Ok(decoder.json.decodeFromJsonElement(dataSerializer, element))
-    }
-
-    override fun serialize(encoder: Encoder, value: Response<T>) {
-        // Encoder -> JsonEncoder
-        require(encoder is JsonEncoder) // This class can be encoded only by Json
-        // value -> JsonElement
-        val element = when (value) {
-            is Response.Ok -> encoder.json.encodeToJsonElement(dataSerializer, value.data)
-            is Response.Error -> buildJsonObject { put("error", value.message) }
-        }
-        // JsonElement -> JsonEncoder
-        encoder.encodeJsonElement(element)
-    }
-}
-
-@Serializable
-data class Project(val name: String)
+val format = Json { prettyPrint = true }
 
 fun main() {
-    val responses = listOf(
-        Response.Ok(Project("kotlinx.serialization")),
-        Response.Error("Not found")
-    )
-    val string = Json.encodeToString(responses)
-    println(string)
-    println(Json.decodeFromString<List<Response<Project>>>(string))
+    val pi = BigDecimal("3.141592653589793238462643383279")
+
+    // use JsonUnquotedLiteral to encode raw JSON content
+    val piJsonLiteral = JsonUnquotedLiteral(pi.toString())
+
+    val piJsonDouble = JsonPrimitive(pi.toDouble())
+    val piJsonString = JsonPrimitive(pi.toString())
+  
+    val piObject = buildJsonObject {
+        put("pi_literal", piJsonLiteral)
+        put("pi_double", piJsonDouble)
+        put("pi_string", piJsonString)
+    }
+
+    println(format.encodeToString(piObject))
 }

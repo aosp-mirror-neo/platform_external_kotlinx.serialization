@@ -16,19 +16,35 @@ internal actual fun BooleanArray.getChecked(index: Int): Boolean {
     if (index !in indices) throw IndexOutOfBoundsException("Index $index out of bounds $indices")
     return get(index)
 }
-@Suppress("UNCHECKED_CAST")
+
 internal actual fun <T : Any> KClass<T>.compiledSerializerImpl(): KSerializer<T>? =
-    this.constructSerializerForGivenTypeArgs() ?: this.js.asDynamic().Companion?.serializer() as? KSerializer<T>
+    this.constructSerializerForGivenTypeArgs() ?: (
+        if (this === Nothing::class) NothingSerializer // Workaround for KT-51333
+        else this.js.asDynamic().Companion?.serializer()
+        ) as? KSerializer<T>
+
+internal actual fun <T> createCache(factory: (KClass<*>) -> KSerializer<T>?): SerializerCache<T> {
+    return object: SerializerCache<T> {
+        override fun get(key: KClass<Any>): KSerializer<T>? {
+            return factory(key)
+        }
+    }
+}
+
+internal actual fun <T> createParametrizedCache(factory: (KClass<Any>, List<KType>) -> KSerializer<T>?): ParametrizedSerializerCache<T> {
+    return object: ParametrizedSerializerCache<T> {
+        override fun get(key: KClass<Any>, types: List<KType>): Result<KSerializer<T>?> {
+            return kotlin.runCatching { factory(key, types) }
+        }
+    }
+}
 
 internal actual fun <T : Any, E : T?> ArrayList<E>.toNativeArrayImpl(eClass: KClass<T>): Array<E> = toTypedArray()
 
-internal actual fun Any.isInstanceOf(kclass: KClass<*>): Boolean = kclass.isInstance(this)
-
 internal actual fun KClass<*>.platformSpecificSerializerNotRegistered(): Nothing {
     throw SerializationException(
-        "Serializer for class '${simpleName}' is not found.\n" +
-                "Mark the class as @Serializable or provide the serializer explicitly.\n" +
-                "On Kotlin/JS explicitly declared serializer should be used for interfaces and enums without @Serializable annotation"
+        notRegisteredMessage() +
+                "To get enum serializer on Kotlin/JS, it should be annotated with @Serializable annotation."
     )
 }
 

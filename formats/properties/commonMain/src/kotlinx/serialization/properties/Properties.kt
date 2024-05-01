@@ -53,6 +53,19 @@ public sealed class Properties(
 
         protected abstract fun encode(value: Any): Value
 
+        @Suppress("UNCHECKED_CAST")
+        final override fun <T> encodeSerializableValue(serializer: SerializationStrategy<T>, value: T) {
+            if (serializer is AbstractPolymorphicSerializer<*>) {
+                val casted = serializer as AbstractPolymorphicSerializer<Any>
+                val actualSerializer = casted.findPolymorphicSerializer(this, value as Any)
+                encodeTaggedString(nested("type"), actualSerializer.descriptor.serialName)
+
+                return actualSerializer.serialize(this, value)
+            }
+
+            return serializer.serialize(this, value)
+        }
+
         override fun encodeTaggedValue(tag: String, value: Any) {
             map[tag] = encode(value)
         }
@@ -87,6 +100,18 @@ public sealed class Properties(
 
         final override fun beginStructure(descriptor: SerialDescriptor): CompositeDecoder {
             return structure(descriptor).also { copyTagsTo(it) }
+        }
+
+        final override fun <T> decodeSerializableValue(deserializer: DeserializationStrategy<T>): T {
+            if (deserializer is AbstractPolymorphicSerializer<*>) {
+                val type = map[nested("type")]?.toString()
+                val actualSerializer: DeserializationStrategy<Any> = deserializer.findPolymorphicSerializer(this, type)
+
+                @Suppress("UNCHECKED_CAST")
+                return actualSerializer.deserialize(this) as T
+            }
+
+            return deserializer.deserialize(this)
         }
 
         final override fun decodeTaggedValue(tag: String): Value {
@@ -188,7 +213,7 @@ public sealed class Properties(
      * A [Properties] instance that can be used as default and does not have any [SerializersModule] installed.
      */
     @ExperimentalSerializationApi
-    public companion object Default : Properties(EmptySerializersModule, null)
+    public companion object Default : Properties(EmptySerializersModule(), null)
 }
 
 @OptIn(ExperimentalSerializationApi::class)

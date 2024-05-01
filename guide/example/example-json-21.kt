@@ -4,34 +4,20 @@ package example.exampleJson21
 import kotlinx.serialization.*
 import kotlinx.serialization.json.*
 
-import kotlinx.serialization.descriptors.*
-import kotlinx.serialization.encoding.*
-
-data class UnknownProject(val name: String, val details: JsonObject)
-
-object UnknownProjectSerializer : KSerializer<UnknownProject> {
-    override val descriptor: SerialDescriptor = buildClassSerialDescriptor("UnknownProject") {
-        element<String>("name")
-        element<JsonElement>("details")
-    }
-
-    override fun deserialize(decoder: Decoder): UnknownProject {
-        // Cast to JSON-specific interface
-        val jsonInput = decoder as? JsonDecoder ?: error("Can be deserialized only by JSON")
-        // Read the whole content as JSON
-        val json = jsonInput.decodeJsonElement().jsonObject
-        // Extract and remove name property
-        val name = json.getValue("name").jsonPrimitive.content
-        val details = json.toMutableMap()
-        details.remove("name")
-        return UnknownProject(name, JsonObject(details))
-    }
-
-    override fun serialize(encoder: Encoder, value: UnknownProject) {
-        error("Serialization is not supported")
-    }
-}
+import java.math.BigDecimal
 
 fun main() {
-    println(Json.decodeFromString(UnknownProjectSerializer, """{"type":"unknown","name":"example","maintainer":"Unknown","license":"Apache 2.0"}"""))
+    val piObjectJson = """
+          {
+              "pi_literal": 3.141592653589793238462643383279
+          }
+      """.trimIndent()
+    
+    val piObject: JsonObject = Json.decodeFromString(piObjectJson)
+    
+    val piJsonLiteral = piObject["pi_literal"]!!.jsonPrimitive.content
+    
+    val pi = BigDecimal(piJsonLiteral)
+    
+    println(pi)
 }

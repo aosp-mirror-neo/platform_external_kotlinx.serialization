@@ -11,11 +11,10 @@ import kotlin.test.*
 
 @Suppress("RemoveExplicitTypeArguments") // This is exactly what's being tested
 class SerializersLookupObjectTest {
-    @Serializable(with = ObjectExternalObjectSerializer::class)
+    @Serializable(with = ObjectCustomObjectSerializer::class)
     object ObjectExternalObject
 
-    @Serializer(forClass = ObjectExternalObject::class)
-    object ObjectExternalObjectSerializer {
+    object ObjectCustomObjectSerializer: KSerializer<ObjectExternalObject> {
         override val descriptor: SerialDescriptor = buildSerialDescriptor("tmp", StructureKind.OBJECT)
 
         override fun serialize(encoder: Encoder, value: ObjectExternalObject) {
@@ -27,11 +26,10 @@ class SerializersLookupObjectTest {
         }
     }
 
-    @Serializable(with = ObjectExternalClassSerializer::class)
+    @Serializable(with = ObjectCustomClassSerializer::class)
     object ObjectExternalClass
 
-    @Serializer(forClass = ObjectExternalClass::class)
-    class ObjectExternalClassSerializer {
+    class ObjectCustomClassSerializer: KSerializer<ObjectExternalClass> {
         override val descriptor: SerialDescriptor = buildSerialDescriptor("tmp", StructureKind.OBJECT)
 
         override fun serialize(encoder: Encoder, value: ObjectExternalClass) {
@@ -43,48 +41,24 @@ class SerializersLookupObjectTest {
         }
     }
 
-    @Polymorphic
-    object ObjectPolymorphic
-
     @Serializable
     object PlainObject
 
     @Test
     fun testPlainObject() {
-        if (!isJsLegacy()) {
-            assertSame(PlainObject.serializer(), serializer<PlainObject>())
-        }
+        assertSame(PlainObject.serializer(), serializer<PlainObject>())
     }
 
 
     @Test
     fun testObjectExternalObject() {
-        assertSame(ObjectExternalObjectSerializer, ObjectExternalObject.serializer())
-        if (!isJsLegacy()) {
-            assertSame(ObjectExternalObjectSerializer, serializer<ObjectExternalObject>())
-        }
+        assertSame(ObjectCustomObjectSerializer, ObjectExternalObject.serializer())
+        assertSame(ObjectCustomObjectSerializer, serializer<ObjectExternalObject>())
     }
 
     @Test
     fun testObjectExternalClass() {
-        assertIs<ObjectExternalClassSerializer>(ObjectExternalClass.serializer())
-
-        if (!isJsLegacy()) {
-            assertIs<ObjectExternalClassSerializer>(serializer<ObjectExternalClass>())
-        }
-    }
-
-    @Test
-    fun testEnumPolymorphic() {
-        if (isJvm()) {
-            assertEquals(
-                PolymorphicSerializer(ObjectPolymorphic::class).descriptor,
-                serializer<ObjectPolymorphic>().descriptor
-            )
-        } else {
-            // FIXME serializer<PolymorphicObject> is broken for K/JS and K/Native. Remove `assertFails` after fix
-            assertFails { serializer<ObjectPolymorphic>() }
-        }
-
+        assertIs<ObjectCustomClassSerializer>(ObjectExternalClass.serializer())
+        assertIs<ObjectCustomClassSerializer>(serializer<ObjectExternalClass>())
     }
 }

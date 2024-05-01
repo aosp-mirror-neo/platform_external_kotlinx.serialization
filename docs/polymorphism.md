@@ -41,11 +41,11 @@ Let us start with basic introduction to polymorphism.
 
 ### Static types
 
-Kotlin serialization is fully static with respect to types by default. The structure of encoded objects is determined 
+Kotlin Serialization is fully static with respect to types by default. The structure of encoded objects is determined 
 by *compile-time* types of objects. Let's examine this aspect in more detail and learn how
 to serialize polymorphic data structures, where the type of data is determined at runtime.
 
-To show the static nature of Kotlin serialization let us make the following setup. An `open class Project`
+To show the static nature of Kotlin Serialization let us make the following setup. An `open class Project`
 has just the `name` property, while its derived `class OwnedProject` adds an `owner` property.
 In the below example, we serialize `data` variable with a static type of
 `Project` that is initialized with an instance of `OwnedProject` at runtime.
@@ -92,7 +92,7 @@ We get an error, because the `OwnedProject` class is not serializable.
  
 ```text
 Exception in thread "main" kotlinx.serialization.SerializationException: Serializer for class 'OwnedProject' is not found.
-Mark the class as @Serializable or provide the serializer explicitly.
+Please ensure that class is marked as '@Serializable' and that the serialization compiler plugin is applied.
 ```                                                                       
 
 <!--- TEST LINES_START -->
@@ -123,8 +123,9 @@ fun main() {
 This is close to the best design for a serializable hierarchy of classes, but running it produces the following error:
 
 ```text 
-Exception in thread "main" kotlinx.serialization.SerializationException: Class 'OwnedProject' is not registered for polymorphic serialization in the scope of 'Project'.
-Mark the base class as 'sealed' or register the serializer explicitly.
+Exception in thread "main" kotlinx.serialization.SerializationException: Serializer for subclass 'OwnedProject' is not found in the polymorphic scope of 'Project'.
+Check if class with serial name 'OwnedProject' exists and serializer is registered in a corresponding SerializersModule.
+To be registered automatically, class 'OwnedProject' has to be '@Serializable', and the base class 'Project' has to be sealed and '@Serializable'.
 ```         
 
 <!--- TEST LINES_START -->
@@ -194,7 +195,7 @@ discriminator property is not emitted into the resulting JSON.
 
 <!--- TEST -->
 
-In general, Kotlin serialization is designed to work correctly only when the compile-time type used during serialization 
+In general, Kotlin Serialization is designed to work correctly only when the compile-time type used during serialization 
 is the same one as the compile-time type used during deserialization. You can always specify the type explicitly 
 when calling serialization functions. The previous example can be corrected to use `Project` type for serialization
 by calling `Json.encodeToString<Project>(data)`.
@@ -407,6 +408,8 @@ fun main() {
 {"type":"owned","name":"kotlinx.coroutines","owner":"kotlin"}
 ```
 
+> Note: On Kotlin/Native, you should use `format.encodeToString(PolymorphicSerializer(Project::class), data))` instead due to limited reflection capabilities.
+
 <!--- TEST LINES_START -->
 
 ### Property of an interface type
@@ -495,7 +498,7 @@ We get the exception.
 
 ```text
 Exception in thread "main" kotlinx.serialization.SerializationException: Serializer for class 'Any' is not found.
-Mark the class as @Serializable or provide the serializer explicitly.
+Please ensure that class is marked as '@Serializable' and that the serialization compiler plugin is applied.
 ```
 
 <!--- TEST LINES_START -->
@@ -539,11 +542,11 @@ fun main() {
 
 > You can get the full code [here](../guide/example/example-poly-13.kt).
 
-However, the `Any` is a class and it is not serializable:
+However, `Any` is a class and it is not serializable:
 
 ```text 
 Exception in thread "main" kotlinx.serialization.SerializationException: Serializer for class 'Any' is not found.
-Mark the class as @Serializable or provide the serializer explicitly.
+Please ensure that class is marked as '@Serializable' and that the serialization compiler plugin is applied.
 ```
 
 <!--- TEST LINES_START -->
@@ -592,7 +595,7 @@ With the explicit serializer it works as before.
 ### Explicitly marking polymorphic class properties
 
 The property of an interface type is implicitly considered polymorphic, since interfaces are all about runtime polymorphism. 
-However, Kotlin serialization does not compile a serializable class with a property of a non-serializable class type. 
+However, Kotlin Serialization does not compile a serializable class with a property of a non-serializable class type. 
 If we have a property of `Any` class or other non-serializable class, then we must explicitly provide its serialization 
 strategy via the [`@Serializable`][Serializable] annotation as we saw in 
 the [Specifying serializer on a property](serializers.md#specifying-serializer-on-a-property) section. 
@@ -708,7 +711,7 @@ abstract class Response<out T>
 data class OkResponse<out T>(val data: T) : Response<T>()
 ```
  
-Kotlin serialization does not have a builtin strategy to represent the actually provided argument type for the
+Kotlin Serialization does not have a builtin strategy to represent the actually provided argument type for the
 type parameter `T` when serializing a property of the polymorphic type `OkResponse<T>`. We have to provide this 
 strategy explicitly when defining the serializers module for the `Response`. In the below example we
 use `OkResponse.serializer(...)` to retrieve 
@@ -829,7 +832,8 @@ fun main() {
 We get the following exception.
 
 ```text 
-Exception in thread "main" kotlinx.serialization.json.internal.JsonDecodingException: Polymorphic serializer was not found for class discriminator 'unknown'
+Exception in thread "main" kotlinx.serialization.json.internal.JsonDecodingException: Unexpected JSON token at offset 0: Serializer for subclass 'unknown' is not found in the polymorphic scope of 'Project' at path: $
+Check if class with serial name 'unknown' exists and serializer is registered in a corresponding SerializersModule.
 ```
 
 <!--- TEST LINES_START -->
@@ -1006,31 +1010,31 @@ The next chapter covers [JSON features](json.md).
 <!--- MODULE /kotlinx-serialization-core -->
 <!--- INDEX kotlinx-serialization-core/kotlinx.serialization -->
 
-[SerialName]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization/-serial-name/index.html
-[PolymorphicSerializer]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization/-polymorphic-serializer/index.html
-[Serializable]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization/-serializable/index.html
-[Polymorphic]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization/-polymorphic/index.html
-[DeserializationStrategy]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization/-deserialization-strategy/index.html
-[SerializationStrategy]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization/-serialization-strategy/index.html
+[SerialName]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization/-serial-name/index.html
+[PolymorphicSerializer]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization/-polymorphic-serializer/index.html
+[Serializable]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization/-serializable/index.html
+[Polymorphic]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization/-polymorphic/index.html
+[DeserializationStrategy]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization/-deserialization-strategy/index.html
+[SerializationStrategy]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization/-serialization-strategy/index.html
 
 <!--- INDEX kotlinx-serialization-core/kotlinx.serialization.modules -->
 
-[SerializersModule]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization.modules/-serializers-module/index.html
-[SerializersModule()]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization.modules/-serializers-module.html
-[_polymorphic]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization.modules/polymorphic.html
-[subclass]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization.modules/subclass.html
-[plus]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization.modules/plus.html
-[SerializersModuleBuilder.include]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization.modules/-serializers-module-builder/include.html
-[PolymorphicModuleBuilder.defaultDeserializer]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization.modules/-polymorphic-module-builder/default-deserializer.html
-[PolymorphicModuleBuilder]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization.modules/-polymorphic-module-builder/index.html
-[SerializersModuleBuilder.polymorphicDefaultSerializer]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization.modules/-serializers-module-builder/polymorphic-default-serializer.html
-[SerializersModuleBuilder]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization.modules/-serializers-module-builder/index.html
+[SerializersModule]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization.modules/-serializers-module/index.html
+[SerializersModule()]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization.modules/-serializers-module.html
+[_polymorphic]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization.modules/polymorphic.html
+[subclass]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization.modules/subclass.html
+[plus]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization.modules/plus.html
+[SerializersModuleBuilder.include]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization.modules/-serializers-module-builder/include.html
+[PolymorphicModuleBuilder.defaultDeserializer]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization.modules/-polymorphic-module-builder/default-deserializer.html
+[PolymorphicModuleBuilder]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization.modules/-polymorphic-module-builder/index.html
+[SerializersModuleBuilder.polymorphicDefaultSerializer]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization.modules/-serializers-module-builder/polymorphic-default-serializer.html
+[SerializersModuleBuilder]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization.modules/-serializers-module-builder/index.html
 
 <!--- MODULE /kotlinx-serialization-json -->
 <!--- INDEX kotlinx-serialization-json/kotlinx.serialization.json -->
 
-[Json.encodeToString]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/-json/encode-to-string.html
-[Json]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/-json/index.html
+[Json.encodeToString]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/-json/encode-to-string.html
+[Json]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/-json/index.html
 
 <!--- END -->
 

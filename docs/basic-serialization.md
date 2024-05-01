@@ -79,7 +79,7 @@ When we run this code we get the exception.
 
 ```text
 Exception in thread "main" kotlinx.serialization.SerializationException: Serializer for class 'Project' is not found.
-Mark the class as @Serializable or provide the serializer explicitly.
+Please ensure that class is marked as '@Serializable' and that the serialization compiler plugin is applied.
 ```
 
 <!--- TEST LINES_START -->
@@ -534,7 +534,7 @@ the `null` value to it.
 
 ```text
 Exception in thread "main" kotlinx.serialization.json.internal.JsonDecodingException: Unexpected JSON token at offset 52: Expected string literal but 'null' literal was found at path: $.language
-Use 'coerceInputValues = true' in 'Json {}` builder to coerce nulls to default values.
+Use 'coerceInputValues = true' in 'Json {}' builder to coerce nulls if property has a default value.
 ```
 
 <!--- TEST LINES_START -->
@@ -687,14 +687,14 @@ The next chapter covers [Builtin classes](builtin-classes.md).
 <!--- MODULE /kotlinx-serialization-core -->
 <!--- INDEX kotlinx-serialization-core/kotlinx.serialization -->
 
-[kotlinx.serialization.encodeToString]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization/encode-to-string.html
-[Serializable]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization/-serializable/index.html
-[kotlinx.serialization.decodeFromString]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization/decode-from-string.html
-[Required]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization/-required/index.html
-[Transient]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization/-transient/index.html
-[EncodeDefault]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization/-encode-default/index.html
-[EncodeDefault.Mode]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization/-encode-default/-mode/index.html
-[SerialName]: https://kotlin.github.io/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization/-serial-name/index.html
+[kotlinx.serialization.encodeToString]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization/encode-to-string.html
+[Serializable]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization/-serializable/index.html
+[kotlinx.serialization.decodeFromString]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization/decode-from-string.html
+[Required]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization/-required/index.html
+[Transient]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization/-transient/index.html
+[EncodeDefault]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization/-encode-default/index.html
+[EncodeDefault.Mode]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization/-encode-default/-mode/index.html
+[SerialName]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization/-serial-name/index.html
 
 <!--- MODULE /kotlinx-serialization-json -->
 <!--- INDEX kotlinx-serialization-json/kotlinx.serialization.json -->
