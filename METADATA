@@ -1,16 +1,20 @@
-name: "kotlinx.serialization"
-description:
-    "Kotlin serialization consists of a compiler plugin, that generates visitor "
-    "code for serializable classes, runtime library with core serialization API "
-    "and support libraries with various serialization formats."
+# This project was upgraded with external_updater.
+# Usage: tools/external_updater/updater.sh update external/kotlinx.serialization
+# For more info, check https://cs.android.com/android/platform/superproject/+/main:tools/external_updater/README.md
 
+name: "kotlinx.serialization"
+description: "Kotlin serialization consists of a compiler plugin, that generates visitor code for serializable classes, runtime library with core serialization API and support libraries with various serialization formats."
 third_party {
+  license_type: NOTICE
+  last_upgrade_date {
+    year: 2024
+    month: 4
+    day: 22
+  }
   identifier {
     type: "Git"
     value: "https://github.com/Kotlin/kotlinx.serialization"
+    version: "v1.6.3"
     primary_source: true
-    version: "v1.3.3"
   }
-  last_upgrade_date { year: 2024 month: 3 day: 7 }
-  license_type: NOTICE
 }
