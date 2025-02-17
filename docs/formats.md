@@ -13,11 +13,18 @@ stable, these are currently experimental features of Kotlin Serialization.
 * [CBOR (experimental)](#cbor-experimental)
   * [Ignoring unknown keys](#ignoring-unknown-keys)
   * [Byte arrays and CBOR data types](#byte-arrays-and-cbor-data-types)
+  * [Definite vs. Indefinite Length Encoding](#definite-vs-indefinite-length-encoding)
+  * [Tags and Labels](#tags-and-labels)
+  * [Arrays](#arrays)
+  * [Custom CBOR-specific Serializers](#custom-cbor-specific-serializers)
 * [ProtoBuf (experimental)](#protobuf-experimental)
   * [Field numbers](#field-numbers)
   * [Integer types](#integer-types)
   * [Lists as repeated fields](#lists-as-repeated-fields)
   * [Packed fields](#packed-fields)
+  * [Oneof field (experimental)](#oneof-field-experimental)
+    * [Usage](#usage)
+    * [Alternative](#alternative)
   * [ProtoBuf schema generator (experimental)](#protobuf-schema-generator-experimental)
 * [Properties (experimental)](#properties-experimental)
 * [Custom formats (experimental)](#custom-formats-experimental)
@@ -58,6 +65,7 @@ fun ByteArray.toAsciiHexString() = joinToString("") {
 @Serializable
 data class Project(val name: String, val language: String)
 
+@OptIn(ExperimentalSerializationApi::class)
 fun main() {
     val data = Project("kotlinx.serialization", "Kotlin") 
     val bytes = Cbor.encodeToByteArray(data)   
@@ -109,13 +117,14 @@ import kotlinx.serialization.cbor.*
 -->
 
 ```kotlin
-val format = Cbor { ignoreUnknownKeys = true }
-
 @Serializable
 data class Project(val name: String)
 
+@OptIn(ExperimentalSerializationApi::class)
 fun main() {
-    val data = format.decodeFromHexString<Project>(
+  val format = Cbor { ignoreUnknownKeys = true }
+  
+  val data = format.decodeFromHexString<Project>(
         "bf646e616d65756b6f746c696e782e73657269616c697a6174696f6e686c616e6775616765664b6f746c696eff"
     )
     println(data)
@@ -161,6 +170,8 @@ Per the [RFC 7049 Major Types] section, CBOR supports the following data types:
 
 By default, Kotlin `ByteArray` instances are encoded as **major type 4**.
 When **major type 2** is desired, then the [`@ByteString`][ByteString] annotation can be used.
+Moreover, the `alwaysUseByteString` configuration switch allows for globally preferring **major type 2** without needing
+to annotate every `ByteArray` in a class hierarchy.
 
 <!--- INCLUDE
 import kotlinx.serialization.*
@@ -174,12 +185,14 @@ fun ByteArray.toAsciiHexString() = joinToString("") {
 
 ```kotlin
 @Serializable
+@OptIn(ExperimentalSerializationApi::class)
 data class Data(
     @ByteString
     val type2: ByteArray, // CBOR Major type 2
     val type4: ByteArray  // CBOR Major type 4
-)        
+)
 
+@OptIn(ExperimentalSerializationApi::class)
 fun main() {
     val data = Data(byteArrayOf(1, 2, 3, 4), byteArrayOf(5, 6, 7, 8)) 
     val bytes = Cbor.encodeToByteArray(data)   
@@ -218,6 +231,90 @@ BF               # map(*)
    FF            # primitive(*)
 ```
 
+### Definite vs. Indefinite Length Encoding
+CBOR supports two encodings for maps and arrays: definite and indefinite length encoding. kotlinx.serialization defaults
+to the latter, which means that a map's or array's number of elements is not encoded, but instead a terminating byte is
+appended after the last element.
+Definite length encoding, on the other hand, omits this terminating byte, but instead prepends number of elements
+to the contents of a map or array. The `useDefiniteLengthEncoding` configuration switch allows for toggling between the
+two modes of encoding.
+
+
+### Tags and Labels
+
+CBOR allows for optionally defining *tags* for properties and their values. These tags are encoded into the resulting
+byte string to transport additional information
+(see [RFC 8949 Tagging of Items](https://datatracker.ietf.org/doc/html/rfc8949#name-tagging-of-items) for more info).
+The  [`@KeyTags`](Tags.kt) and [`@ValueTags`](Tags.kt) annotations can be used to define such tags while
+writing and verifying such tags can be toggled using the  `encodeKeyTags`, `encodeValueTags`, `verifyKeyTags`, and
+`verifyValueTags` configuration switches respectively.
+In addition, it is possible to directly declare classes to always be tagged.
+This then applies to all instances of such a tagged class, regardless of whether they are used as values in a list
+or when they are used as a property in another class.
+Forcing objects to always be tagged in such a manner is accomplished by the [`@ObjectTags`](Tags.kt) annotation,
+which works just as `ValueTags`, but for class definitions.
+When serializing, `ObjectTags` will always be encoded directly before to the data of the tagged object, i.e. a
+value-tagged property of an object-tagged type will have the value tags preceding the object tags.
+Writing and verifying object tags can be toggled using the `encodeObjectTags` and `verifyObjectTags` configuration
+switches. Note that verifying only value tags can result in some data with superfluous tags to still deserialize
+successfully, since in this case - by definition - only a partial validation of tags happens.
+Well-known tags are specified in [`CborTag`](Tags.kt).
+
+In addition, CBOR supports keys of all types which work just as `SerialName`s.
+COSE restricts this again to strings and numbers and calls these restricted map keys *labels*. String labels can be
+assigned by using `@SerialName`, while number labels can be assigned using the [`@CborLabel`](CborLabel.kt) annotation.
+The `preferCborLabelsOverNames` configuration switch can be used to prefer number labels over SerialNames in case both
+are present for a property. This duality allows for compact representation of a type when serialized to CBOR, while
+keeping expressive diagnostic names when serializing to JSON.
+
+A predefined Cbor instance (in addition to the default [`Cbor.Default`](Cbor.kt) one) is available, adhering to COSE
+encoding requirements as [`Cbor.CoseCompliant`](Cbor.kt). This instance uses definite length encoding,
+encodes and verifies all tags and prefers labels to serial names.
+
+### Arrays
+
+Classes may be serialized as a CBOR Array (major type 4) instead of a CBOR Map (major type 5).
+
+Example usage:
+
+```
+@Serializable
+data class DataClass(
+    val alg: Int,
+    val kid: String?
+)
+
+Cbor.encodeToByteArray(DataClass(alg = -7, kid = null))
+```
+
+will normally produce a Cbor map: bytes `0xa263616c6726636b6964f6`, or in diagnostic notation:
+
+```
+A2           # map(2)
+   63        # text(3)
+      616C67 # "alg"
+   26        # negative(6)
+   63        # text(3)
+      6B6964 # "kid"
+   F6        # primitive(22)
+```
+
+When annotated with `@CborArray`, serialization of the same object will produce a Cbor array: bytes `0x8226F6`, or in diagnostic notation:
+
+```
+82    # array(2)
+   26 # negative(6)
+   F6 # primitive(22)
+```
+This may be used to encode COSE structures, see [RFC 9052 2. Basic COSE Structure](https://www.rfc-editor.org/rfc/rfc9052#section-2).
+
+
+### Custom CBOR-specific Serializers
+Cbor encoders and decoders implement the interfaces [CborEncoder](CborEncoder.kt) and [CborDecoder](CborDecoder.kt), respectively.
+These interfaces contain a single property, `cbor`, exposing the current CBOR serialization configuration.
+This enables custom cbor-specific serializers to reuse the current `Cbor` instance to produce embedded byte arrays or
+react to configuration settings such as `preferCborLabelsOverNames` or `useDefiniteLengthEncoding`, for example.
+
 ## ProtoBuf (experimental)
 
 [Protocol Buffers](https://developers.google.com/protocol-buffers) is a language-neutral binary format that normally
@@ -245,6 +342,7 @@ fun ByteArray.toAsciiHexString() = joinToString("") {
 @Serializable
 data class Project(val name: String, val language: String)
 
+@OptIn(ExperimentalSerializationApi::class)
 fun main() {
     val data = Project("kotlinx.serialization", "Kotlin") 
     val bytes = ProtoBuf.encodeToByteArray(data)   
@@ -287,6 +385,7 @@ fun ByteArray.toAsciiHexString() = joinToString("") {
 -->
 
 ```kotlin    
+@OptIn(ExperimentalSerializationApi::class)
 @Serializable
 data class Project(
     @ProtoNumber(1)
@@ -295,6 +394,7 @@ data class Project(
     val language: String
 )
 
+@OptIn(ExperimentalSerializationApi::class)
 fun main() {
     val data = Project("kotlinx.serialization", "Kotlin") 
     val bytes = ProtoBuf.encodeToByteArray(data)   
@@ -339,6 +439,7 @@ fun ByteArray.toAsciiHexString() = joinToString("") {
 -->
 
 ```kotlin    
+@OptIn(ExperimentalSerializationApi::class)
 @Serializable
 class Data(
     @ProtoType(ProtoIntegerType.DEFAULT)
@@ -349,6 +450,7 @@ class Data(
     val c: Int
 )
 
+@OptIn(ExperimentalSerializationApi::class)
 fun main() {
     val data = Data(1, -2, 3) 
     println(ProtoBuf.encodeToByteArray(data).toAsciiHexString())
@@ -404,6 +506,7 @@ data class Data(
     val b: List<Int> = emptyList()
 )
 
+@OptIn(ExperimentalSerializationApi::class)
 fun main() {
     val data = Data(listOf(1, 2, 3), listOf())
     val bytes = ProtoBuf.encodeToByteArray(data)
@@ -435,6 +538,110 @@ Per the standard packed fields can only be used on primitive numeric types. The 
 Per the [format description](https://developers.google.com/protocol-buffers/docs/encoding#packed) the parser ignores
 the annotation, but rather reads list in either packed or repeated format.
 
+### Oneof field (experimental)
+
+Kotlin Serialization `ProtoBuf` format supports [oneof](https://protobuf.dev/programming-guides/proto2/#oneof) fields
+basing on the [Polymorphism](polymorphism.md) functionality.
+
+#### Usage
+
+Given a protobuf message defined like:
+
+```proto
+message Data {
+    required string name = 1;
+    oneof phone {
+        string home_phone = 2;
+        string work_phone = 3;
+    }
+}
+```
+
+You can define a kotlin class semantically equal to this message by following these steps:
+
+* Declare a sealed interface or abstract class, to represent of the `oneof` group, called *the oneof interface*. In our example, oneof interface is `IPhoneType`.
+* Declare a Kotlin class as usual to represent the whole message (`class Data` in our example). In this class, add the property with oneof interface type, annotated with `@ProtoOneOf`. Do not use `@ProtoNumber` for that property.
+* Declare subclasses for oneof interface, one per each oneof group element. Each class must have **exactly one property** with the corresponding oneof element type. In our example, these classes are `HomePhone` and `WorkPhone`.
+* Annotate properties in subclasses with `@ProtoNumber`, according to original `oneof` definition. In our example, `val number: String` in `HomePhone` has `@ProtoNumber(2)` annotation, because of field `string home_phone = 2;` in `oneof phone`.
+
+<!--- INCLUDE
+import kotlinx.serialization.*
+import kotlinx.serialization.protobuf.*
+-->
+
+```kotlin
+// The outer class
+@OptIn(ExperimentalSerializationApi::class)
+@Serializable
+data class Data(
+    @ProtoNumber(1) val name: String,
+    @ProtoOneOf val phone: IPhoneType?,
+)
+
+// The oneof interface
+@Serializable sealed interface IPhoneType
+
+// Message holder for home_phone
+@OptIn(ExperimentalSerializationApi::class)
+@Serializable @JvmInline value class HomePhone(@ProtoNumber(2) val number: String): IPhoneType
+
+// Message holder for work_phone. Can also be a value class, but we leave it as `data` to demonstrate that both variants can be used.
+@OptIn(ExperimentalSerializationApi::class)
+@Serializable data class WorkPhone(@ProtoNumber(3) val number: String): IPhoneType
+
+@OptIn(ExperimentalSerializationApi::class)
+fun main() {
+  val dataTom = Data("Tom", HomePhone("123"))
+  val stringTom = ProtoBuf.encodeToHexString(dataTom)
+  val dataJerry = Data("Jerry", WorkPhone("789"))
+  val stringJerry = ProtoBuf.encodeToHexString(dataJerry)
+  println(stringTom)
+  println(stringJerry)
+  println(ProtoBuf.decodeFromHexString<Data>(stringTom))
+  println(ProtoBuf.decodeFromHexString<Data>(stringJerry))
+}
+```
+
+> You can get the full code [here](../guide/example/example-formats-08.kt).
+
+```text
+0a03546f6d1203313233
+0a054a657272791a03373839
+Data(name=Tom, phone=HomePhone(number=123))
+Data(name=Jerry, phone=WorkPhone(number=789))
+```
+
+<!--- TEST -->
+
+In [ProtoBuf diagnostic mode](https://protogen.marcgravell.com/decode) the first 2 lines in the output are equivalent to
+
+```
+Field #1: 0A String Length = 3, Hex = 03, UTF8 = "Tom" Field #2: 12 String Length = 3, Hex = 03, UTF8 = "123"
+Field #1: 0A String Length = 5, Hex = 05, UTF8 = "Jerry" Field #3: 1A String Length = 3, Hex = 03, UTF8 = "789"
+```
+
+You should note that each group of `oneof` types should be tied to exactly one data class, and it is better not to reuse it in
+another data class. Otherwise, you may get id conflicts or `IllegalArgumentException` in runtime.
+
+#### Alternative
+
+You don't always need to apply the `@ProtoOneOf` form in your class for messages with `oneof` fields, if this class is only used for deserialization.
+
+For example, the following class:
+
+```
+@Serializable  
+data class Data2(  
+    @ProtoNumber(1) val name: String,  
+    @ProtoNumber(2) val homeNumber: String? = null,  
+    @ProtoNumber(3) val workNumber: String? = null,  
+)  
+```
+
+is also compatible with the `message Data` given above, which means the same input can be deserialized into it instead of `Data` — in case you don't want to deal with sealed hierarchies.
+
+But please note that there are no exclusivity checks. This means that if an instance of `Data2` has both (or none) `homeNumber` and `workNumber` as non-null values and is serialized to protobuf, it no longer complies with the original schema. If you send such data to another parser, one of the fields may be omitted, leading to an unknown issue.
+
 ### ProtoBuf schema generator (experimental)
 
 As mentioned above, when working with protocol buffers you usually use a ".proto" file and a code generator for your
@@ -461,13 +668,15 @@ data class SampleData(
     val description: String?,
     val department: String = "QA"
 )
+
+@OptIn(ExperimentalSerializationApi::class)
 fun main() {
   val descriptors = listOf(SampleData.serializer().descriptor)
   val schemas = ProtoBufSchemaGenerator.generateSchemaText(descriptors)
   println(schemas)
 }
 ```
-> You can get the full code [here](../guide/example/example-formats-08.kt).
+> You can get the full code [here](../guide/example/example-formats-09.kt).
 
 Which would output as follows.
 
@@ -475,7 +684,7 @@ Which would output as follows.
 syntax = "proto2";
 
 
-// serial name 'example.exampleFormats08.SampleData'
+// serial name 'example.exampleFormats09.SampleData'
 message SampleData {
   required int64 amount = 1;
   optional string description = 2;
@@ -512,6 +721,7 @@ class Project(val name: String, val owner: User)
 @Serializable
 class User(val name: String)
 
+@OptIn(ExperimentalSerializationApi::class)
 fun main() {
     val data = Project("kotlinx.serialization",  User("kotlin"))
     val map = Properties.encodeToMap(data)
@@ -519,7 +729,7 @@ fun main() {
 }
 ```      
 
-> You can get the full code [here](../guide/example/example-formats-09.kt).
+> You can get the full code [here](../guide/example/example-formats-10.kt).
 
 The resulting map has dot-separated keys representing keys of the nested objects.
 
@@ -544,7 +754,8 @@ implemented to get a basic working format.
 
 Let us start with a trivial format implementation that encodes the data into a single list of primitive
 constituent objects in the order they were written in the source code. To start, we implement a simple [Encoder] by
-overriding `encodeValue` in [AbstractEncoder].
+overriding `encodeValue` in [AbstractEncoder]. Since encoders are intended to be consumed by other parts of application,
+it is recommended to propagate the `@ExperimentalSerializationApi` annotation instead of opting-in.
 
 <!--- INCLUDE
 import kotlinx.serialization.*
@@ -554,6 +765,7 @@ import kotlinx.serialization.modules.*
 -->
 
 ```kotlin
+@ExperimentalSerializationApi
 class ListEncoder : AbstractEncoder() {
     val list = mutableListOf<Any>()
 
@@ -569,6 +781,7 @@ Now we write a convenience top-level function that creates an encoder that encod
 and returns a list.
 
 ```kotlin
+@ExperimentalSerializationApi
 fun <T> encodeToList(serializer: SerializationStrategy<T>, value: T): List<Any> {
     val encoder = ListEncoder()
     encoder.encodeSerializableValue(serializer, value)
@@ -581,6 +794,7 @@ the `encodeToList` function with a `reified` type parameter using the [serialize
 the appropriate [KSerializer] instance for the actual type.
 
 ```kotlin 
+@ExperimentalSerializationApi
 inline fun <reified T> encodeToList(value: T) = encodeToList(serializer(), value)
 ```                  
 
@@ -593,13 +807,14 @@ data class Project(val name: String, val owner: User, val votes: Int)
 @Serializable
 data class User(val name: String)
 
+@OptIn(ExperimentalSerializationApi::class)
 fun main() {
     val data = Project("kotlinx.serialization",  User("kotlin"), 9000)
     println(encodeToList(data))
 }
 ```                                    
 
-> You can get the full code [here](../guide/example/example-formats-10.kt).
+> You can get the full code [here](../guide/example/example-formats-11.kt).
 
 As a result, we got all the primitive values in our object graph visited and put into a list
 in _serial_ order.
@@ -621,6 +836,7 @@ import kotlinx.serialization.descriptors.*
 import kotlinx.serialization.encoding.*
 import kotlinx.serialization.modules.*
 
+@ExperimentalSerializationApi
 class ListEncoder : AbstractEncoder() {
     val list = mutableListOf<Any>()
 
@@ -631,12 +847,14 @@ class ListEncoder : AbstractEncoder() {
     }
 }
 
+@ExperimentalSerializationApi
 fun <T> encodeToList(serializer: SerializationStrategy<T>, value: T): List<Any> {
     val encoder = ListEncoder()
     encoder.encodeSerializableValue(serializer, value)
     return encoder.list
 }
 
+@ExperimentalSerializationApi
 inline fun <reified T> encodeToList(value: T) = encodeToList(serializer(), value)
 -->
 
@@ -648,10 +866,11 @@ A decoder needs to implement more substance.
   in the `elementIndex` variable. See 
   the [Hand-written composite serializer](serializers.md#hand-written-composite-serializer) section 
   on how it ends up being used.
-* [beginStructure][Decoder.beginStructure] &mdash; returns a new instance of the `ListDecoder`, so that
+* [beginStructure][Decoder.beginStructure] &mdash; returns a new instance of `ListDecoder`, so that
   each structure that is being recursively decoded keeps track of its own `elementIndex` state separately.  
 
 ```kotlin
+@ExperimentalSerializationApi
 class ListDecoder(val list: ArrayDeque<Any>) : AbstractDecoder() {
     private var elementIndex = 0
 
@@ -672,11 +891,13 @@ class ListDecoder(val list: ArrayDeque<Any>) : AbstractDecoder() {
 A couple of convenience functions for decoding.
 
 ```kotlin
+@ExperimentalSerializationApi
 fun <T> decodeFromList(list: List<Any>, deserializer: DeserializationStrategy<T>): T {
     val decoder = ListDecoder(ArrayDeque(list))
     return decoder.decodeSerializableValue(deserializer)
 }
 
+@ExperimentalSerializationApi
 inline fun <reified T> decodeFromList(list: List<Any>): T = decodeFromList(list, serializer())
 ```
 
@@ -692,6 +913,7 @@ data class User(val name: String)
 -->
 
 ```kotlin    
+@OptIn(ExperimentalSerializationApi::class)
 fun main() {
     val data = Project("kotlinx.serialization",  User("kotlin"), 9000)
     val list = encodeToList(data)
@@ -701,7 +923,7 @@ fun main() {
 }
 ```
 
-> You can get the full code [here](../guide/example/example-formats-11.kt).
+> You can get the full code [here](../guide/example/example-formats-12.kt).
 
 Now we can convert a list of primitives back to an object tree.
 
@@ -729,6 +951,7 @@ import kotlinx.serialization.descriptors.*
 import kotlinx.serialization.encoding.*
 import kotlinx.serialization.modules.*
 
+@ExperimentalSerializationApi
 class ListEncoder : AbstractEncoder() {
     val list = mutableListOf<Any>()
 
@@ -739,16 +962,19 @@ class ListEncoder : AbstractEncoder() {
     }
 }
 
+@ExperimentalSerializationApi
 fun <T> encodeToList(serializer: SerializationStrategy<T>, value: T): List<Any> {
     val encoder = ListEncoder()
     encoder.encodeSerializableValue(serializer, value)
     return encoder.list
 }
 
+@ExperimentalSerializationApi
 inline fun <reified T> encodeToList(value: T) = encodeToList(serializer(), value)
 -->
 
 ```kotlin
+@ExperimentalSerializationApi
 class ListDecoder(val list: ArrayDeque<Any>) : AbstractDecoder() {
     private var elementIndex = 0
 
@@ -770,11 +996,13 @@ class ListDecoder(val list: ArrayDeque<Any>) : AbstractDecoder() {
 
 <!--- INCLUDE
 
+@ExperimentalSerializationApi
 fun <T> decodeFromList(list: List<Any>, deserializer: DeserializationStrategy<T>): T {
     val decoder = ListDecoder(ArrayDeque(list))
     return decoder.decodeSerializableValue(deserializer)
 }
 
+@ExperimentalSerializationApi
 inline fun <reified T> decodeFromList(list: List<Any>): T = decodeFromList(list, serializer())
 
 @Serializable
@@ -783,6 +1011,7 @@ data class Project(val name: String, val owner: User, val votes: Int)
 @Serializable
 data class User(val name: String)
 
+@OptIn(ExperimentalSerializationApi::class)
 fun main() {
     val data = Project("kotlinx.serialization",  User("kotlin"), 9000)
     val list = encodeToList(data)
@@ -792,7 +1021,7 @@ fun main() {
 }
 -->
 
-> You can get the full code [here](../guide/example/example-formats-12.kt).
+> You can get the full code [here](../guide/example/example-formats-13.kt).
 
 <!--- TEST 
 [kotlinx.serialization, kotlin, 9000]
@@ -816,6 +1045,7 @@ import kotlinx.serialization.modules.*
 -->
 
 ```kotlin
+@ExperimentalSerializationApi
 class ListEncoder : AbstractEncoder() {
     val list = mutableListOf<Any>()
 
@@ -834,12 +1064,14 @@ class ListEncoder : AbstractEncoder() {
 
 <!--- INCLUDE
 
+@ExperimentalSerializationApi
 fun <T> encodeToList(serializer: SerializationStrategy<T>, value: T): List<Any> {
     val encoder = ListEncoder()
     encoder.encodeSerializableValue(serializer, value)
     return encoder.list
 }
 
+@ExperimentalSerializationApi
 inline fun <reified T> encodeToList(value: T) = encodeToList(serializer(), value)
 -->
 
@@ -849,6 +1081,7 @@ in addition to the previous code.
 > The formats that store collection size in advance have to return `true` from `decodeSequentially`.
 
 ```kotlin
+@ExperimentalSerializationApi
 class ListDecoder(val list: ArrayDeque<Any>, var elementsCount: Int = 0) : AbstractDecoder() {
     private var elementIndex = 0
 
@@ -873,11 +1106,13 @@ class ListDecoder(val list: ArrayDeque<Any>, var elementsCount: Int = 0) : Abstr
 
 <!--- INCLUDE
 
+@ExperimentalSerializationApi
 fun <T> decodeFromList(list: List<Any>, deserializer: DeserializationStrategy<T>): T {
     val decoder = ListDecoder(ArrayDeque(list))
     return decoder.decodeSerializableValue(deserializer)
 }
 
+@ExperimentalSerializationApi
 inline fun <reified T> decodeFromList(list: List<Any>): T = decodeFromList(list, serializer())
 -->
 
@@ -890,6 +1125,7 @@ data class Project(val name: String, val owners: List<User>, val votes: Int)
 @Serializable
 data class User(val name: String)
 
+@OptIn(ExperimentalSerializationApi::class)
 fun main() {
     val data = Project("kotlinx.serialization",  listOf(User("kotlin"), User("jetbrains")), 9000)
     val list = encodeToList(data)
@@ -899,7 +1135,7 @@ fun main() {
 }
 ```
 
-> You can get the full code [here](../guide/example/example-formats-13.kt).
+> You can get the full code [here](../guide/example/example-formats-14.kt).
 
 We see the size of the list added to the result, letting the decoder know where to stop. 
 
@@ -921,6 +1157,7 @@ import kotlinx.serialization.descriptors.*
 import kotlinx.serialization.encoding.*
 import kotlinx.serialization.modules.*
 
+@ExperimentalSerializationApi
 class ListEncoder : AbstractEncoder() {
     val list = mutableListOf<Any>()
 
@@ -946,14 +1183,17 @@ In the encoder implementation we override [Encoder.encodeNull] and [Encoder.enco
 <!--- INCLUDE
 }
 
+@ExperimentalSerializationApi
 fun <T> encodeToList(serializer: SerializationStrategy<T>, value: T): List<Any> {
     val encoder = ListEncoder()
     encoder.encodeSerializableValue(serializer, value)
     return encoder.list
 }
 
+@ExperimentalSerializationApi
 inline fun <reified T> encodeToList(value: T) = encodeToList(serializer(), value)
 
+@ExperimentalSerializationApi
 class ListDecoder(val list: ArrayDeque<Any>, var elementsCount: Int = 0) : AbstractDecoder() {
     private var elementIndex = 0
     
@@ -984,11 +1224,13 @@ In the decoder implementation we override [Decoder.decodeNotNullMark].
 <!--- INCLUDE
 }
 
+@ExperimentalSerializationApi
 fun <T> decodeFromList(list: List<Any>, deserializer: DeserializationStrategy<T>): T {
     val decoder = ListDecoder(ArrayDeque(list))
     return decoder.decodeSerializableValue(deserializer)
 }
 
+@ExperimentalSerializationApi
 inline fun <reified T> decodeFromList(list: List<Any>): T = decodeFromList(list, serializer())
 -->
 
@@ -1001,6 +1243,7 @@ data class Project(val name: String, val owner: User?, val votes: Int?)
 @Serializable
 data class User(val name: String)
 
+@OptIn(ExperimentalSerializationApi::class)
 fun main() {
     val data = Project("kotlinx.serialization",  User("kotlin") , null)
     val list = encodeToList(data)
@@ -1011,7 +1254,7 @@ fun main() {
 
 ```
 
-> You can get the full code [here](../guide/example/example-formats-14.kt).
+> You can get the full code [here](../guide/example/example-formats-15.kt).
 
 In the output we see how not-null`!!` and `NULL` marks are used.
 
@@ -1037,7 +1280,8 @@ import kotlinx.serialization.modules.*
 import java.io.*
 -->
 
-```kotlin            
+```kotlin     
+@ExperimentalSerializationApi
 class DataOutputEncoder(val output: DataOutput) : AbstractEncoder() {
     override val serializersModule: SerializersModule = EmptySerializersModule()
     override fun encodeBoolean(value: Boolean) = output.writeByte(if (value) 1 else 0)
@@ -1063,17 +1307,20 @@ class DataOutputEncoder(val output: DataOutput) : AbstractEncoder() {
 
 <!--- INCLUDE
 
+@ExperimentalSerializationApi
 fun <T> encodeTo(output: DataOutput, serializer: SerializationStrategy<T>, value: T) {
     val encoder = DataOutputEncoder(output)
     encoder.encodeSerializableValue(serializer, value)
 }
 
+@ExperimentalSerializationApi
 inline fun <reified T> encodeTo(output: DataOutput, value: T) = encodeTo(output, serializer(), value)
 -->
 
 The decoder implementation mirrors encoder's implementation overriding all the primitive `decodeXxx` functions.
 
 ```kotlin 
+@ExperimentalSerializationApi
 class DataInputDecoder(val input: DataInput, var elementsCount: Int = 0) : AbstractDecoder() {
     private var elementIndex = 0
     override val serializersModule: SerializersModule = EmptySerializersModule()
@@ -1107,11 +1354,13 @@ class DataInputDecoder(val input: DataInput, var elementsCount: Int = 0) : Abstr
 
 <!--- INCLUDE
 
+@ExperimentalSerializationApi
 fun <T> decodeFrom(input: DataInput, deserializer: DeserializationStrategy<T>): T {
     val decoder = DataInputDecoder(input)
     return decoder.decodeSerializableValue(deserializer)
 }
 
+@ExperimentalSerializationApi
 inline fun <reified T> decodeFrom(input: DataInput): T = decodeFrom(input, serializer())
 
 fun ByteArray.toAsciiHexString() = joinToString("") {
@@ -1127,6 +1376,7 @@ used in the [CBOR (experimental)](#cbor-experimental) and [ProtoBuf (experimenta
 @Serializable
 data class Project(val name: String, val language: String)
 
+@OptIn(ExperimentalSerializationApi::class)
 fun main() {
     val data = Project("kotlinx.serialization", "Kotlin")
     val output = ByteArrayOutputStream()
@@ -1139,7 +1389,7 @@ fun main() {
 }
 ```
               
-> You can get the full code [here](../guide/example/example-formats-15.kt).
+> You can get the full code [here](../guide/example/example-formats-16.kt).
 
 As we can see, the result is a dense binary format that only contains the data that is being serialized. 
 It can be easily tweaked for any kind of domain-specific compact encoding.
@@ -1190,6 +1440,7 @@ we add a trivial implementation of `encodeCompactSize` function that uses only o
 a size of up to 254 bytes.  
 
 <!--- INCLUDE
+@ExperimentalSerializationApi
 class DataOutputEncoder(val output: DataOutput) : AbstractEncoder() {
     override val serializersModule: SerializersModule = EmptySerializersModule()
     override fun encodeBoolean(value: Boolean) = output.writeByte(if (value) 1 else 0)
@@ -1238,13 +1489,16 @@ class DataOutputEncoder(val output: DataOutput) : AbstractEncoder() {
 <!--- INCLUDE
 }
 
+@ExperimentalSerializationApi
 fun <T> encodeTo(output: DataOutput, serializer: SerializationStrategy<T>, value: T) {
     val encoder = DataOutputEncoder(output)
     encoder.encodeSerializableValue(serializer, value)
 }
 
+@ExperimentalSerializationApi
 inline fun <reified T> encodeTo(output: DataOutput, value: T) = encodeTo(output, serializer(), value)
 
+@ExperimentalSerializationApi
 class DataInputDecoder(val input: DataInput, var elementsCount: Int = 0) : AbstractDecoder() {
     private var elementIndex = 0
     override val serializersModule: SerializersModule = EmptySerializersModule()
@@ -1302,11 +1556,13 @@ the [decodeSerializableValue][Decoder.decodeSerializableValue] function.
 <!--- INCLUDE
 }
 
+@ExperimentalSerializationApi
 fun <T> decodeFrom(input: DataInput, deserializer: DeserializationStrategy<T>): T {
     val decoder = DataInputDecoder(input)
     return decoder.decodeSerializableValue(deserializer)
 }
 
+@ExperimentalSerializationApi
 inline fun <reified T> decodeFrom(input: DataInput): T = decodeFrom(input, serializer())
 
 fun ByteArray.toAsciiHexString() = joinToString("") {
@@ -1321,6 +1577,7 @@ Now everything is ready to perform serialization of some byte arrays.
 @Serializable
 data class Project(val name: String, val attachment: ByteArray)
 
+@OptIn(ExperimentalSerializationApi::class)
 fun main() {
     val data = Project("kotlinx.serialization", byteArrayOf(0x0A, 0x0B, 0x0C, 0x0D))
     val output = ByteArrayOutputStream()
@@ -1333,7 +1590,7 @@ fun main() {
 }
 ```
               
-> You can get the full code [here](../guide/example/example-formats-16.kt).
+> You can get the full code [here](../guide/example/example-formats-17.kt).
 
 As we can see, our custom byte array format is being used, with the compact encoding of its size in one byte. 
 

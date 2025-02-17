@@ -4,19 +4,29 @@ package example.exampleJson25
 import kotlinx.serialization.*
 import kotlinx.serialization.json.*
 
-@Serializable
-class Project(val name: String, val language: String)
+import kotlinx.serialization.builtins.*
 
-object ProjectSerializer : JsonTransformingSerializer<Project>(Project.serializer()) {
-    override fun transformSerialize(element: JsonElement): JsonElement =
-        // Filter out top-level key value pair with the key "language" and the value "Kotlin"
-        JsonObject(element.jsonObject.filterNot {
-            (k, v) -> k == "language" && v.jsonPrimitive.content == "Kotlin"
-        })
+@Serializable
+data class Project(
+    val name: String,
+    @Serializable(with = UserListSerializer::class)
+    val users: List<User>
+)
+
+@Serializable
+data class User(val name: String)
+
+object UserListSerializer : JsonTransformingSerializer<List<User>>(ListSerializer(User.serializer())) {
+    // If response is not an array, then it is a single object that should be wrapped into the array
+    override fun transformDeserialize(element: JsonElement): JsonElement =
+        if (element !is JsonArray) JsonArray(listOf(element)) else element
 }
 
 fun main() {
-    val data = Project("kotlinx.serialization", "Kotlin")
-    println(Json.encodeToString(data)) // using plugin-generated serializer
-    println(Json.encodeToString(ProjectSerializer, data)) // using custom serializer
+    println(Json.decodeFromString<Project>("""
+        {"name":"kotlinx.serialization","users":{"name":"kotlin"}}
+    """))
+    println(Json.decodeFromString<Project>("""
+        {"name":"kotlinx.serialization","users":[{"name":"kotlin"},{"name":"jetbrains"}]}
+    """))
 }

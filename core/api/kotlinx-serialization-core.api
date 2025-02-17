@@ -123,6 +123,8 @@ public abstract interface annotation class kotlinx/serialization/Serializer : ja
 }
 
 public final class kotlinx/serialization/SerializersKt {
+	public static final fun moduleThenPolymorphic (Lkotlinx/serialization/modules/SerializersModule;Lkotlin/reflect/KClass;)Lkotlinx/serialization/KSerializer;
+	public static final fun moduleThenPolymorphic (Lkotlinx/serialization/modules/SerializersModule;Lkotlin/reflect/KClass;[Lkotlinx/serialization/KSerializer;)Lkotlinx/serialization/KSerializer;
 	public static final fun noCompiledSerializer (Ljava/lang/String;)Lkotlinx/serialization/KSerializer;
 	public static final fun noCompiledSerializer (Lkotlinx/serialization/modules/SerializersModule;Lkotlin/reflect/KClass;)Lkotlinx/serialization/KSerializer;
 	public static final fun noCompiledSerializer (Lkotlinx/serialization/modules/SerializersModule;Lkotlin/reflect/KClass;[Lkotlinx/serialization/KSerializer;)Lkotlinx/serialization/KSerializer;
@@ -197,6 +199,7 @@ public final class kotlinx/serialization/builtins/BuiltinSerializersKt {
 	public static final fun serializer (Lkotlin/jvm/internal/ShortCompanionObject;)Lkotlinx/serialization/KSerializer;
 	public static final fun serializer (Lkotlin/jvm/internal/StringCompanionObject;)Lkotlinx/serialization/KSerializer;
 	public static final fun serializer (Lkotlin/time/Duration$Companion;)Lkotlinx/serialization/KSerializer;
+	public static final fun serializer (Lkotlin/uuid/Uuid$Companion;)Lkotlinx/serialization/KSerializer;
 }
 
 public final class kotlinx/serialization/builtins/LongAsStringSerializer : kotlinx/serialization/KSerializer {
@@ -306,6 +309,7 @@ public final class kotlinx/serialization/descriptors/SerialDescriptorsKt {
 	public static synthetic fun buildClassSerialDescriptor$default (Ljava/lang/String;[Lkotlinx/serialization/descriptors/SerialDescriptor;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lkotlinx/serialization/descriptors/SerialDescriptor;
 	public static final fun buildSerialDescriptor (Ljava/lang/String;Lkotlinx/serialization/descriptors/SerialKind;[Lkotlinx/serialization/descriptors/SerialDescriptor;Lkotlin/jvm/functions/Function1;)Lkotlinx/serialization/descriptors/SerialDescriptor;
 	public static synthetic fun buildSerialDescriptor$default (Ljava/lang/String;Lkotlinx/serialization/descriptors/SerialKind;[Lkotlinx/serialization/descriptors/SerialDescriptor;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public static final fun getNonNullOriginal (Lkotlinx/serialization/descriptors/SerialDescriptor;)Lkotlinx/serialization/descriptors/SerialDescriptor;
 	public static final fun getNullable (Lkotlinx/serialization/descriptors/SerialDescriptor;)Lkotlinx/serialization/descriptors/SerialDescriptor;
 	public static final fun listSerialDescriptor (Lkotlinx/serialization/descriptors/SerialDescriptor;)Lkotlinx/serialization/descriptors/SerialDescriptor;
 	public static final fun mapSerialDescriptor (Lkotlinx/serialization/descriptors/SerialDescriptor;Lkotlinx/serialization/descriptors/SerialDescriptor;)Lkotlinx/serialization/descriptors/SerialDescriptor;
@@ -722,6 +726,12 @@ public final class kotlinx/serialization/internal/EnumSerializer : kotlinx/seria
 	public fun toString ()Ljava/lang/String;
 }
 
+public final class kotlinx/serialization/internal/EnumsKt {
+	public static final fun createAnnotatedEnumSerializer (Ljava/lang/String;[Ljava/lang/Enum;[Ljava/lang/String;[[Ljava/lang/annotation/Annotation;[Ljava/lang/annotation/Annotation;)Lkotlinx/serialization/KSerializer;
+	public static final fun createMarkedEnumSerializer (Ljava/lang/String;[Ljava/lang/Enum;[Ljava/lang/String;[[Ljava/lang/annotation/Annotation;)Lkotlinx/serialization/KSerializer;
+	public static final fun createSimpleEnumSerializer (Ljava/lang/String;[Ljava/lang/Enum;)Lkotlinx/serialization/KSerializer;
+}
+
 public final class kotlinx/serialization/internal/FloatArrayBuilder : kotlinx/serialization/internal/PrimitiveArrayBuilder {
 	public synthetic fun build$kotlinx_serialization_core ()Ljava/lang/Object;
 }
@@ -905,6 +915,7 @@ public abstract class kotlinx/serialization/internal/NamedValueDecoder : kotlinx
 	public synthetic fun getTag (Lkotlinx/serialization/descriptors/SerialDescriptor;I)Ljava/lang/Object;
 	protected final fun getTag (Lkotlinx/serialization/descriptors/SerialDescriptor;I)Ljava/lang/String;
 	protected final fun nested (Ljava/lang/String;)Ljava/lang/String;
+	protected final fun renderTagStack ()Ljava/lang/String;
 }
 
 public abstract class kotlinx/serialization/internal/NamedValueEncoder : kotlinx/serialization/internal/TaggedEncoder {
@@ -1281,6 +1292,15 @@ public final class kotlinx/serialization/internal/UnitSerializer : kotlinx/seria
 	public fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
 	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
 	public fun serialize (Lkotlinx/serialization/encoding/Encoder;Lkotlin/Unit;)V
+}
+
+public final class kotlinx/serialization/internal/UuidSerializer : kotlinx/serialization/KSerializer {
+	public static final field INSTANCE Lkotlinx/serialization/internal/UuidSerializer;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lkotlin/uuid/Uuid;
+	public fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun serialize (Lkotlinx/serialization/encoding/Encoder;Lkotlin/uuid/Uuid;)V
 }
 
 public final class kotlinx/serialization/modules/PolymorphicModuleBuilder {
