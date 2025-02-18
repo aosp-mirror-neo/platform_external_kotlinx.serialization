@@ -68,7 +68,7 @@ private open class DynamicInput(
     }
 
     override fun <T> decodeSerializableValue(deserializer: DeserializationStrategy<T>): T {
-        return decodeSerializableValuePolymorphic(deserializer)
+        return decodeSerializableValuePolymorphic(deserializer, ::renderTagStack)
     }
 
     private fun coerceInputValue(descriptor: SerialDescriptor, index: Int, tag: String): Boolean =
@@ -248,7 +248,7 @@ private class DynamicMapInput(
         if (isKey) {
             val value = decodeTaggedValue(tag)
             if (value !is String) return decode(tag)
-            return value.toString().cast() ?: throwIllegalKeyType(tag, value, type)
+            return value.cast() ?: throwIllegalKeyType(tag, value, type)
         }
         return decode(tag)
     }
