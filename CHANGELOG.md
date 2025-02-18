@@ -1,3 +1,187 @@
+1.7.3 / 2024-09-19
+==================
+
+This release aims to fix important issues that were discovered in the 1.7.2 release,
+including the inability to sync certain projects into Android Studio/IntelliJ IDEA and exceptions from custom Uuid serializers.
+
+It uses Kotlin 2.0.20 by default.
+
+  * Use explicit kotlin-stdlib and kotlin-test versions from version catalog (#2818)
+  * Drop usage of deprecated Any?.freeze() in K/N target (#2819)
+  * Check against serialName instead of simpleClassName (#2802)
+  * Ignore NoClassDefFoundError when initializing builtins map for serializer() function (#2803)
+  * Clarify example for SerializationException (#2806)
+
+1.7.2 / 2024-08-28
+==================
+
+This release provides several new features, including a major Cbor configuration rework.
+It uses Kotlin 2.0.20 by default. 
+
+## Cbor feature set for COSE compliance
+
+This change brings a lot of features to the CBOR format, namely:
+
+- Serial Labels — see `@CborLabel` annotation and `preferCborLabelsOverNames` flag.
+- Tagging of keys and values — see `encode*Tags` and `verify*Tags` set of flags
+- Definite length encoding — see `useDefiniteLengthEncoding`. This flag affects object encoding, since decoding of arrays with definite lenghts is automatically supported.
+- Option to globally prefer major type 2 for byte array encoding — see `alwaysUseByteString` flag.
+
+Since there are quite a lot of flags now, they were restructured to a separate `CborConfiguration` class, similarly to `JsonConfiguration`.
+It is possible to retrieve this configuration from `CborEncoder/CborDecoder` interfaces in your custom serializers (see their documentation for details).
+
+All of these features make it possible to serialize and parse [COSE-compliant CBOR](https://datatracker.ietf.org/doc/html/rfc8152), for example, ISO/IEC 18013-5:2021-compliant mobile driving license data.
+In case you want to make use of them, there is a predefined `Cbor.CoseCompliant` instance.
+However, some canonicalization steps (such as sorting keys) still need to be performed manually. 
+
+This functionality [was contributed](https://github.com/Kotlin/kotlinx.serialization/pull/2412) to us by [Bernd Prünster](https://github.com/JesusMcCloud).
+
+## Keeping generated serializers
+
+One of the most requested features for serialization plugin was to continue to generate a serializer even if a custom one is specified for the class.
+It allows using a plugin-generated serializer in a fallback or delegate strategy, accessing type structure via descriptor, using default serialization behavior in inheritors that do not use custom serializers.
+
+Starting with this release, you can specify the `@KeepGeneratedSerializer` annotation on the class declaration to instruct the plugin to continue generating the serializer.
+In this case, the serializer will be accessible using the `.generatedSerializer()` function on the class's companion object.
+
+> This annotation is currently experimental. Kotlin 2.0.20 or higher is required for this feature to work.
+
+You can check out the examples in [the documentation](docs/serializers.md#simultaneous-use-of-plugin-generated-and-custom-serializers) and in the PRs: [#2758](https://github.com/Kotlin/kotlinx.serialization/pull/2758), [#2669](https://github.com/Kotlin/kotlinx.serialization/pull/2669).
+
+## Serializer for kotlin.uuid.Uuid
+
+Kotlin 2.0.20 [added](https://kotlinlang.org/docs/whatsnew2020.html#support-for-uuids-in-the-common-kotlin-standard-library) a common class to represent UUIDs in a multiplatform code.
+kotlinx.serialization 1.7.2 provides a corresponding `Uuid.serializer()` for it, making it possible to use it in `@Serializable` classes.
+Note that for now, serializer should be provided manually with [`@Contextual` annotation](https://github.com/Kotlin/kotlinx.serialization/blob/master/docs/serializers.md#contextual-serialization).
+Plugin will be able to automatically insert `Uuid` serializer in Kotlin 2.1.0.
+
+See more details in the [corresponding PR](https://github.com/Kotlin/kotlinx.serialization/pull/2744).
+
+## Other bugfixes and improvements
+
+  * Prohibited using of zero and negative field numbers in ProtoNumber (#2766)
+  * Improve readability of protobuf decoding exception messages (#2768) (thanks to [xiaozhikang0916](https://github.com/xiaozhikang0916))
+  * docs(serializers): Fix grammatical errors (#2779) (thanks to [jamhour1g](https://github.com/jamhour1g))
+  * Fixed VerifyError after ProGuard optimization (#2728)
+  * Add wasm-wasi target to Okio integration (#2727)
+
+1.7.1 / 2024-06-25
+==================
+
+This is a bugfix release that aims to fix missing `kotlinx-serialization-hocon` artifact.
+It also contains experimental integration with `kotlinx-io` library.
+Kotlin 2.0.0 is used by default.
+
+## Fixed HOCON publication
+
+Sadly, 1.7.0 release was published incomplete: `kotlinx-serialization-hocon` artifact is missing from 1.7.0 and 1.7.0-RC releases.
+This release fixes this problem and now `kotlinx-serialization-hocon` is available again with 1.7.1 version.
+No other changes were made to this artifact. Related ticket: [#2717](https://github.com/Kotlin/kotlinx.serialization/issues/2717).
+
+## Add integration with a kotlinx-io library
+
+[`kotlinx-io`](https://github.com/Kotlin/kotlinx-io) is an official multiplatform library that provides basic IO primitives, similar to Okio. 
+kotlinx.serialization integration is now available in a separate artifact, located at the `kotlinx-serialization-json-io` coordinates.
+Integration artifact provides functions similar to existing [Okio integration](https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-json-okio/kotlinx.serialization.json.okio/): `encodeToSink`, `decodeFromSource`, and `decodeSourceToSequence`.
+Check out the [PR](https://github.com/Kotlin/kotlinx.serialization/pull/2707) for more details.
+
+## Other bugfixes
+  * Prohibited use of elements other than JsonObject in JsonTransformingSerializer with polymorphic serialization (#2715)
+
+1.7.0 / 2024-06-05
+==================
+
+This release contains all of the changes from 1.7.0-RC and is compatible with Kotlin 2.0.
+Please note that for reasons explained in the [1.7.0-RC changelog](https://github.com/Kotlin/kotlinx.serialization/releases/tag/v1.7.0-RC), it may not be possible to use it with the Kotlin 1.9.x
+compiler plugin. Yet, it is still fully backwards compatible with previous versions.
+
+The only difference with 1.7.0-RC is that `classDiscriminatorMode` property in `JsonBuilder` is marked as experimental,
+as it should have been when it was introduced (#2680).
+
+1.7.0-RC / 2024-05-16
+==================
+
+This is a release candidate for the next version. It is based on Kotlin 2.0.0-RC3 and is fully compatible with a stable Kotlin 2.0 release. 
+Due to a potential breaking change (see below), it requires a compiler plugin with a version at least of 2.0.0-RC1.
+
+### Important change: priority of PolymorphicSerializer for interfaces during call to serializer<T>() function
+
+Non-sealed interfaces in kotlinx.serialization are always [serializable with a polymorphic serializer](https://github.com/Kotlin/kotlinx.serialization/blob/master/docs/polymorphism.md#serializing-interfaces),
+even if they do not have `@Serializable` annotation. This also means that `serializersModule.serializer<SomeInterface>()` call will return you a serializer capable of polymorphism.
+This function was written in a way that it unconditionally returns a `PolymorphicSerializer` if type argument is a non-sealed interface.
+This caused problems with `SerializersModule` functionality, because actual module was not taken into consideration, and therefore it was impossible
+to override serializer for interface using 'contextual serialization' feature. The problem is described in details [here](https://github.com/Kotlin/kotlinx.serialization/issues/2060).
+To overcome these problems, we had to change the behavior of this function regarding interfaces. It now looks into `SerializersModule` first if `T` is a non-sealed interface,
+and only if there is no registered contextual serializer for `T`, it returns a polymorphic serializer.
+
+Behavior **before 1.7.0-RC**:
+
+```kotlin
+interface SomeInterface
+
+val module = SerializersModule {
+    contextual(SomeInterface::class, CustomSomeInterfaceSerializer)
+}
+
+// Prints PolymorphicSerializer<SomeInterface>:
+println(module.serializer<SomeInterface>())
+```
+
+Behavior **in 1.7.0-RC, 1.7.0, and higher**:
+
+```kotlin
+interface SomeInterface
+
+val module = SerializersModule {
+    contextual(SomeInterface::class, CustomSomeInterfaceSerializer)
+}
+
+// Prints CustomSomeInterfaceSerializer:
+println(module.serializer<SomeInterface>())
+```
+
+We expect minimal impact from this change but be aware of it anyway.
+Implementation details are available in [this PR](https://github.com/Kotlin/kotlinx.serialization/issues/2060).
+
+Due to the [serializer() function being also a compiler intrinsic](https://github.com/Kotlin/kotlinx.serialization/issues/1348), code
+of kotlinx.serialization compiler plugin also accommodates for this change in 2.0 branch. To get a consistent result from both plugin and runtime,
+kotlinx.serialization compiler plugin should be **at least of 2.0.0-RC1 version.** 
+**To verify so, 1.7.0-RC runtime will be rejected by older plugins.**
+
+### Json configuration flag to allow commentaries
+
+While JSON standard does not allow any kind of commentaries, they are one of the most popular extensions — for example,
+commentaries are widely used in configuration files.
+To support this use-case, we added a new configuration flag, `allowComments`.
+This flag allows the parser to skip over C/Java-style commentaries in JSON input.
+Note that commentaries cannot affect decoding or encoding in any way and are not stored anywhere.
+See details in [the PR](https://github.com/Kotlin/kotlinx.serialization/pull/2592).
+
+### Promote `JsonConfiguration.explicitNulls` to a stable API
+
+This configuration flag has been around for a long time and got positive feedback.
+Therefore, we are promoting it to a stable state.
+It also received functionality enhancements when used with `JsonConfiguration.coerceInputValues` ([#2586](https://github.com/Kotlin/kotlinx.serialization/issues/2586)).
+See related [PR](https://github.com/Kotlin/kotlinx.serialization/pull/2661) for details.
+
+### `oneof` support in ProtoBuf
+
+`oneof` fields in protobuf messages [represent a set of optional fields](https://protobuf.dev/programming-guides/proto2/#oneof), where the only one of them is present.
+With the help of the new `@ProtoOneOf` annotation, you can naturally map them to Kotlin's sealed class hierarchy.
+Check out the comprehensive guide for this feature [here](https://github.com/Kotlin/kotlinx.serialization/blob/194a188563c612c63a88271eb3f28f37353df514/docs/formats.md#oneof-field-experimental).
+
+This functionality was [contributed](https://github.com/Kotlin/kotlinx.serialization/pull/2546) to us by [xzk](https://github.com/xiaozhikang0916).
+
+### Other improvements and bugfixes
+
+* Update okio to 3.9.0 version (#2671)
+* Add extension to access original descriptor from one made with SerialDescriptor.nullable (#2633) (thanks to [Chuckame](https://github.com/Chuckame))
+* Use @SerialName of inline polymorphic children in Json (#2601) (thanks to [Tad Fisher](https://github.com/tadfisher))
+* Fix serializing nulls for a property of a parameterized type with a nullable upper bound with Protobuf (#2561) (thanks to [Shreck Ye](https://github.com/ShreckYe))
+* Fixed type discriminator value for custom serializer that uses `encodeJsonElement` (#2628)
+* Refine exception messages in case of deserializing data from JsonElement. (#2648)
+
+
 1.6.3 / 2024-02-16
 ==================
 

@@ -6,7 +6,6 @@ package kotlinx.serialization.internal
 
 import kotlinx.serialization.*
 import kotlinx.serialization.descriptors.*
-import kotlin.native.concurrent.*
 import kotlin.reflect.*
 
 internal object InternalHexConverter {
@@ -141,6 +140,8 @@ internal expect fun BooleanArray.getChecked(index: Int): Boolean
 
 internal expect fun <T : Any> KClass<T>.compiledSerializerImpl(): KSerializer<T>?
 
+internal expect fun <T: Any> KClass<T>.isInterface(): Boolean
+
 /**
  * Create serializers cache for non-parametrized and non-contextual serializers.
  * The activity and type of cache is determined for a specific platform and a specific environment.
@@ -167,6 +168,13 @@ internal interface SerializerCache<T> {
      * Returns cached serializer or `null` if serializer not found.
      */
     fun get(key: KClass<Any>): KSerializer<T>?
+
+    /**
+     * Use SOLELY for test purposes.
+     * May return `false` even if `get` returns value. It means that entry was computed, but not
+     *  stored (behavior for all non-JVM platforms).
+     */
+    fun isStored(key: KClass<*>): Boolean = false
 }
 
 /**

@@ -11,41 +11,13 @@ import kotlinx.serialization.*
 import kotlinx.serialization.builtins.*
 import kotlinx.serialization.descriptors.*
 import kotlinx.serialization.encoding.*
-import kotlin.native.concurrent.*
 import kotlin.reflect.*
 import kotlin.time.Duration
+import kotlin.uuid.*
 
-@OptIn(ExperimentalUnsignedTypes::class)
-private val BUILTIN_SERIALIZERS = mapOf(
-    String::class to String.serializer(),
-    Char::class to Char.serializer(),
-    CharArray::class to CharArraySerializer(),
-    Double::class to Double.serializer(),
-    DoubleArray::class to DoubleArraySerializer(),
-    Float::class to Float.serializer(),
-    FloatArray::class to FloatArraySerializer(),
-    Long::class to Long.serializer(),
-    LongArray::class to LongArraySerializer(),
-    ULong::class to ULong.serializer(),
-    ULongArray::class to ULongArraySerializer(),
-    Int::class to Int.serializer(),
-    IntArray::class to IntArraySerializer(),
-    UInt::class to UInt.serializer(),
-    UIntArray::class to UIntArraySerializer(),
-    Short::class to Short.serializer(),
-    ShortArray::class to ShortArraySerializer(),
-    UShort::class to UShort.serializer(),
-    UShortArray::class to UShortArraySerializer(),
-    Byte::class to Byte.serializer(),
-    ByteArray::class to ByteArraySerializer(),
-    UByte::class to UByte.serializer(),
-    UByteArray::class to UByteArraySerializer(),
-    Boolean::class to Boolean.serializer(),
-    BooleanArray::class to BooleanArraySerializer(),
-    Unit::class to Unit.serializer(),
-    Nothing::class to NothingSerializer(),
-    Duration::class to Duration.serializer()
-)
+private val BUILTIN_SERIALIZERS = initBuiltins()
+
+internal expect fun initBuiltins(): Map<KClass<*>, KSerializer<*>>
 
 internal class PrimitiveSerialDescriptor(
     override val serialName: String,
@@ -74,14 +46,13 @@ internal fun PrimitiveDescriptorSafe(serialName: String, kind: PrimitiveKind): S
 }
 
 private fun checkName(serialName: String) {
-    val keys = BUILTIN_SERIALIZERS.keys
-    for (primitive in keys) {
-        val simpleName = primitive.simpleName!!.capitalize()
-        val qualifiedName = "kotlin.$simpleName" // KClass.qualifiedName is not supported in JS
-        if (serialName.equals(qualifiedName, ignoreCase = true) || serialName.equals(simpleName, ignoreCase = true)) {
+    val values = BUILTIN_SERIALIZERS.values
+    for (primitive in values) {
+        val primitiveName = primitive.descriptor.serialName
+        if (serialName == primitiveName) {
             throw IllegalArgumentException("""
                 The name of serial descriptor should uniquely identify associated serializer.
-                For serial name $serialName there already exist ${simpleName.capitalize()}Serializer.
+                For serial name $serialName there already exists ${primitive::class.simpleName}.
                 Please refer to SerialDescriptor documentation for additional information.
             """.trimIndent())
         }
