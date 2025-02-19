@@ -7,11 +7,12 @@ import java.net.*
 
 plugins {
     kotlin("multiplatform")
-    kotlin("plugin.serialization")
+    alias(libs.plugins.serialization)
+
+    id("native-targets-conventions")
+    id("source-sets-conventions")
 }
 
-apply(from = rootProject.file("gradle/native-targets.gradle"))
-apply(from = rootProject.file("gradle/configure-source-sets.gradle"))
 
 kotlin {
     sourceSets {
@@ -25,12 +26,7 @@ kotlin {
             dependencies {
                 api(project(":kotlinx-serialization-core"))
                 api(project(":kotlinx-serialization-json"))
-                implementation("com.squareup.okio:okio:${property("okio_version")}")
-            }
-        }
-        val commonTest by getting {
-            dependencies {
-                implementation("com.squareup.okio:okio:${property("okio_version")}")
+                implementation(libs.okio)
             }
         }
     }
@@ -47,16 +43,6 @@ tasks.named<DokkaTaskPartial>("dokkaHtmlPartial") {
                     file("dokka/okio.package.list").toURI().toURL()
                 )
             }
-        }
-    }
-}
-
-
-// TODO: Remove this after okio will be updated to the version with 1.9.20 stdlib dependency
-configurations.all {
-    resolutionStrategy.eachDependency {
-        if (requested.name == "kotlin-stdlib-wasm") {
-            useTarget("org.jetbrains.kotlin:kotlin-stdlib-wasm-js:${requested.version}")
         }
     }
 }

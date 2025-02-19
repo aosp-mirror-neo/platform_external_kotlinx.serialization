@@ -4,34 +4,33 @@ package example.exampleJson28
 import kotlinx.serialization.*
 import kotlinx.serialization.json.*
 
-import kotlinx.serialization.descriptors.*
-import kotlinx.serialization.encoding.*
+import kotlinx.serialization.builtins.*
 
-data class UnknownProject(val name: String, val details: JsonObject)
+@Serializable
+abstract class Project {
+    abstract val name: String
+}
 
-object UnknownProjectSerializer : KSerializer<UnknownProject> {
-    override val descriptor: SerialDescriptor = buildClassSerialDescriptor("UnknownProject") {
-        element<String>("name")
-        element<JsonElement>("details")
-    }
+@Serializable
+data class BasicProject(override val name: String): Project()
 
-    override fun deserialize(decoder: Decoder): UnknownProject {
-        // Cast to JSON-specific interface
-        val jsonInput = decoder as? JsonDecoder ?: error("Can be deserialized only by JSON")
-        // Read the whole content as JSON
-        val json = jsonInput.decodeJsonElement().jsonObject
-        // Extract and remove name property
-        val name = json.getValue("name").jsonPrimitive.content
-        val details = json.toMutableMap()
-        details.remove("name")
-        return UnknownProject(name, JsonObject(details))
-    }
 
-    override fun serialize(encoder: Encoder, value: UnknownProject) {
-        error("Serialization is not supported")
+@Serializable
+data class OwnedProject(override val name: String, val owner: String) : Project()
+
+object ProjectSerializer : JsonContentPolymorphicSerializer<Project>(Project::class) {
+    override fun selectDeserializer(element: JsonElement) = when {
+        "owner" in element.jsonObject -> OwnedProject.serializer()
+        else -> BasicProject.serializer()
     }
 }
 
 fun main() {
-    println(Json.decodeFromString(UnknownProjectSerializer, """{"type":"unknown","name":"example","maintainer":"Unknown","license":"Apache 2.0"}"""))
+    val data = listOf(
+        OwnedProject("kotlinx.serialization", "kotlin"),
+        BasicProject("example")
+    )
+    val string = Json.encodeToString(ListSerializer(ProjectSerializer), data)
+    println(string)
+    println(Json.decodeFromString(ListSerializer(ProjectSerializer), string))
 }

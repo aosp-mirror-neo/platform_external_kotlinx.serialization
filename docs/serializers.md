@@ -19,16 +19,17 @@ In this chapter we'll take a look at serializers in more detail, and we'll see h
   * [Primitive serializer](#primitive-serializer)
   * [Delegating serializers](#delegating-serializers)
   * [Composite serializer via surrogate](#composite-serializer-via-surrogate)
-  * [Hand-written composite serializer](#hand-written-composite-serializer)
+  * [Handwritten composite serializer](#handwritten-composite-serializer)
   * [Sequential decoding protocol (experimental)](#sequential-decoding-protocol-experimental)
   * [Serializing 3rd party classes](#serializing-3rd-party-classes)
   * [Passing a serializer manually](#passing-a-serializer-manually)
-  * [Specifying serializer on a property](#specifying-serializer-on-a-property)
-  * [Specifying serializer for a particular type](#specifying-serializer-for-a-particular-type)
+  * [Specifying a serializer on a property](#specifying-a-serializer-on-a-property)
+  * [Specifying a serializer for a particular type](#specifying-a-serializer-for-a-particular-type)
   * [Specifying serializers for a file](#specifying-serializers-for-a-file)
-  * [Specifying serializer globally using typealias](#specifying-serializer-globally-using-typealias)
+  * [Specifying a serializer globally using a typealias](#specifying-a-serializer-globally-using-a-typealias)
   * [Custom serializers for a generic type](#custom-serializers-for-a-generic-type)
   * [Format-specific serializers](#format-specific-serializers)
+* [Simultaneous use of plugin-generated and custom serializers](#simultaneous-use-of-plugin-generated-and-custom-serializers)
 * [Contextual serialization](#contextual-serialization)
   * [Serializers module](#serializers-module)
   * [Contextual serialization and generic classes](#contextual-serialization-and-generic-classes)
@@ -164,9 +165,11 @@ fun main() {
 
 > You can get the full code [here](../guide/example/example-serializer-04.kt).   
 
-<!--- TEST 
+```text
 PrimitiveDescriptor(kotlin.Int)
---> 
+```
+
+<!--- TEST -->
 
 ### Constructing collection serializers
 
@@ -190,9 +193,11 @@ fun main() {
 
 > You can get the full code [here](../guide/example/example-serializer-05.kt).  
 
-<!--- TEST 
+```text
 kotlin.collections.ArrayList(PrimitiveDescriptor(kotlin.String))
---> 
+```
+
+<!--- TEST -->
 
 ### Using top-level serializer function
 
@@ -216,14 +221,17 @@ fun main() {
 
 > You can get the full code [here](../guide/example/example-serializer-06.kt).  
 
-<!--- TEST 
+```text
 kotlin.collections.LinkedHashMap(PrimitiveDescriptor(kotlin.String), Color(rgb: kotlin.Int))
---> 
+```
+
+<!--- TEST -->
 
 ## Custom serializers
 
 A plugin-generated serializer is convenient, but it may not produce the JSON we want 
-for such a class as `Color`. Let's study alternatives.
+for such a class as `Color`.
+Let's study the alternatives.
 
 ### Primitive serializer
 
@@ -253,7 +261,7 @@ object ColorAsStringSerializer : KSerializer<Color> {
 }
 ```
 
-Serializer has three required pieces. 
+A serializer has three required pieces. 
 
 * The [serialize][SerializationStrategy.serialize] function implements [SerializationStrategy].
   It receives an instance of [Encoder] and a value to serialize.
@@ -387,7 +395,7 @@ String is considered to be a primitive type, therefore we used `PrimitiveClassDe
 Now let's see what our actions would be if we have to serialize `Color` as another non-primitive type, let's say `IntArray`.
 
 An implementation of [KSerializer] for our original `Color` class is going to perform a conversion between
-`Color` and `IntArray`, but delegate the actual serialization logic to the `IntArraySerializer`
+`Color` and `IntArray`, but delegate the actual serialization logic to `IntArraySerializer`
 using [encodeSerializableValue][Encoder.encodeSerializableValue] and
 [decodeSerializableValue][Decoder.decodeSerializableValue].
 
@@ -396,6 +404,7 @@ import kotlinx.serialization.builtins.IntArraySerializer
 
 class ColorIntArraySerializer : KSerializer<Color> {
     private val delegateSerializer = IntArraySerializer()
+    @OptIn(ExperimentalSerializationApi::class)
     override val descriptor = SerialDescriptor("Color", delegateSerializer.descriptor)
 
     override fun serialize(encoder: Encoder, value: Color) {
@@ -417,10 +426,10 @@ class ColorIntArraySerializer : KSerializer<Color> {
 Note that we can't use default `Color.serializer().descriptor` here because formats that rely
 on the schema may think that we would call `encodeInt` instead of `encodeSerializableValue`.
 Neither we can use `IntArraySerializer().descriptor` directly — otherwise, formats that handle int arrays specially
-can't tell if `value` is really a `IntArray` or a `Color`. Don't worry, this optimization would still kick in
-when serializing actual underlying int array.
+can't tell if `value` is really an `IntArray` or a `Color`.
+Don't worry, this optimization would still kick in when serializing the actual underlying int array.
 
-> Example of how format can treat arrays specially is shown in the [formats guide](formats.md#format-specific-types).
+> An example of how a format can treat arrays specially is shown in the [formats guide](formats.md#format-specific-types).
 
 Now we can use the serializer:
 
@@ -516,7 +525,7 @@ fun main() {
 
 <!--- TEST -->    
 
-### Hand-written composite serializer
+### Handwritten composite serializer
 
 There are some cases where a surrogate solution does not fit. Perhaps we want to avoid the performance 
 implications of additional allocation, or we want a configurable/dynamic set of properties for the 
@@ -615,10 +624,10 @@ As before, we got the `Color` class represented as a JSON object with three keys
 ### Sequential decoding protocol (experimental)
 
 The implementation of the `deserialize` function from the previous section works with any format. However,
-some formats either always store all the complex data in order, or only do so sometimes (JSON always stores
-collections in order). With these formats the complex protocol of calling `decodeElementIndex` in the loop is 
-not needed, and a faster implementation can be used if the [CompositeDecoder.decodeSequentially] function returns `true`.
-The plugin-generated serializers are actually conceptually similar to the below code.
+some formats either always store all the complex data in order or only do so sometimes (JSON always stores
+collections in order). With these formats the complex protocol of calling `decodeElementIndex` in a loop is 
+unnecessary, and a faster implementation can be used if the [CompositeDecoder.decodeSequentially] function returns `true`.
+The plugin-generated serializers are actually conceptually similar to the code below.
 
 <!--- INCLUDE
 object ColorAsObjectSerializer : KSerializer<Color> {
@@ -643,7 +652,8 @@ object ColorAsObjectSerializer : KSerializer<Color> {
         decoder.decodeStructure(descriptor) {
             var r = -1
             var g = -1
-            var b = -1     
+            var b = -1
+            @OptIn(ExperimentalSerializationApi::class)
             if (decodeSequentially()) { // sequential decoding protocol
                 r = decodeIntElement(descriptor, 0)           
                 g = decodeIntElement(descriptor, 1)  
@@ -712,9 +722,15 @@ We cannot bind the `DateAsLongSerializer` serializer to the `Date` class with th
 because we don't control the `Date` source code. There are several ways to work around that.
 
 ### Passing a serializer manually
- 
-All `encodeToXxx` and `decodeFromXxx` functions have an overload with the first serializer parameter. 
-When a non-serializable class, like `Date`, is the top-level class being serialized, we can use those.
+
+The `encodeToXxx` and `decodeFromXxx` functions offer overloaded versions
+that accept either a [SerializationStrategy] or [DeserializationStrategy] as their first parameter, respectively.
+This feature allows you
+to provide a custom serializer for types that aren't annotated with [`@Serializable`][Serializable] by default.
+
+This approach is particularly useful
+when working with non-serializable classes like `Date` as the top-level object being serialized.
+Here's an example:
 
 ```kotlin
 fun main() {                                              
@@ -731,7 +747,7 @@ fun main() {
 
 <!--- TEST -->
 
-### Specifying serializer on a property
+### Specifying a serializer on a property
 
 When a property of a non-serializable class, like `Date`, is serialized as part of a serializable class we must supply
 its serializer or the code will not compile. This is accomplished using the [`@Serializable`][Serializable] annotation on the property.
@@ -771,7 +787,7 @@ The `stableReleaseDate` property is serialized with the serialization strategy t
 
 <!--- TEST -->
 
-### Specifying serializer for a particular type
+### Specifying a serializer for a particular type
 
 [`@Serializable`][Serializable] annotation can also be applied directly to the types. 
 This is handy when a class that requires a custom serializer, such as `Date`, happens to be a generic type argument.
@@ -810,7 +826,7 @@ fun main() {
 
 <!--- TEST -->
 
-### Specifying serializers for a file 
+### Specifying serializers for a file
 
 A serializer for a specific type, like `Date`, can be specified for a whole source code file with the file-level
 [UseSerializers] annotation at the beginning of the file.
@@ -851,7 +867,7 @@ fun main() {
 
 <!--- TEST --> 
 
-### Specifying serializer globally using typealias
+### Specifying a serializer globally using a typealias
 
 kotlinx.serialization tends to be the always-explicit framework when it comes to serialization strategies: normally,
 they should be explicitly mentioned in `@Serializable` annotation. Therefore, we do not provide any kind of global serializer
@@ -862,6 +878,7 @@ every time, especially for classes like `Date` or `Instant` that have a fixed st
 For such cases, it is possible to specify serializers using `typealias`es, as they preserve annotations, including serialization-related ones:
 <!--- INCLUDE
 import java.util.Date
+import java.util.TimeZone
 import java.text.SimpleDateFormat
   
 object DateAsLongSerializer : KSerializer<Date> {
@@ -872,7 +889,11 @@ object DateAsLongSerializer : KSerializer<Date> {
 
 object DateAsSimpleTextSerializer: KSerializer<Date> {
     override val descriptor: SerialDescriptor = PrimitiveSerialDescriptor("DateAsSimpleText", PrimitiveKind.LONG)
-    private val format = SimpleDateFormat("yyyy-MM-dd")
+    private val format = SimpleDateFormat("yyyy-MM-dd").apply {
+        // Here we explicitly set time zone to UTC so output for this sample remains locale-independent.
+        // Depending on your needs, you may have to adjust or remove this line.
+        setTimeZone(TimeZone.getTimeZone("UTC"))
+    }
     override fun serialize(encoder: Encoder, value: Date) = encoder.encodeString(format.format(value))
     override fun deserialize(decoder: Decoder): Date = format.parse(decoder.decodeString())
 }
@@ -970,6 +991,61 @@ features that a serializer implementation would like to take advantage of.
   
 This chapter proceeds with a generic approach to tweaking the serialization strategy based on the context.   
 
+## Simultaneous use of plugin-generated and custom serializers
+In some cases it may be useful to have a serialization plugin continue to generate a serializer even if a custom one is used for the class.
+
+The most common examples are: using a plugin-generated serializer for fallback strategy, accessing type structure via [descriptor][KSerializer.descriptor] of plugin-generated serializer, use default serialization behavior in descendants that do not use custom serializers.
+
+In order for the plugin to continue generating the serializer, you must specify the `@KeepGeneratedSerializer` annotation in the type declaration.
+In this case, the serializer will be accessible using the `.generatedSerializer()` function on the class's companion object.
+
+> This annotation is currently experimental. Kotlin 2.0.20 or higher is required for this feature to work.
+
+Annotation `@KeepGeneratedSerializer` is not allowed on classes involved in polymorphic serialization: interfaces, sealed classes, abstract classes, classes marked by [Polymorphic].
+
+An example of using two serializers at once:
+
+<!--- INCLUDE
+object ColorAsStringSerializer : KSerializer<Color> {
+    override val descriptor: SerialDescriptor = PrimitiveSerialDescriptor("Color", PrimitiveKind.STRING)
+
+    override fun serialize(encoder: Encoder, value: Color) {
+        val string = value.rgb.toString(16).padStart(6, '0')
+        encoder.encodeString(string)
+    }
+
+    override fun deserialize(decoder: Decoder): Color {
+        val string = decoder.decodeString()
+        return Color(string.toInt(16))
+    }
+}
+-->
+
+```kotlin
+@OptIn(ExperimentalSerializationApi::class)
+@KeepGeneratedSerializer
+@Serializable(with = ColorAsStringSerializer::class)
+class Color(val rgb: Int)
+
+
+fun main() {
+    val green = Color(0x00ff00)
+    println(Json.encodeToString(green))
+    println(Json.encodeToString(Color.generatedSerializer(), green))
+}  
+```  
+
+> You can get the full code [here](../guide/example/example-serializer-20.kt).
+
+As a result, serialization will occur using custom and plugin-generated serializers:
+
+```text
+"00ff00"
+{"rgb":65280}
+```
+
+<!--- TEST -->
+
 ## Contextual serialization
 
 All the previous approaches to specifying custom serialization strategies were _static_, that is 
@@ -1009,7 +1085,7 @@ fun main() {
 To actually serialize this class we must provide the corresponding context when calling the `encodeToXxx`/`decodeFromXxx`
 functions. Without it we'll get a "Serializer for class 'Date' is not found" exception.
 
-> See [here](../guide/example/example-serializer-20.kt) for an example that produces that exception.
+> See [here](../guide/example/example-serializer-21.kt) for an example that produces that exception.
  
 <!--- TEST LINES_START 
 Exception in thread "main" kotlinx.serialization.SerializationException: Serializer for class 'Date' is not found.
@@ -1040,7 +1116,7 @@ class ProgrammingLanguage(
 To provide a context, we define a [SerializersModule] instance that describes which serializers shall be used 
 at run-time to serialize which contextually-serializable classes. This is done using the 
 [SerializersModule {}][SerializersModule()] builder function, which provides the [SerializersModuleBuilder] DSL to 
-register serializers. In the below example we use the [contextual][_contextual] function with the serializer. The corresponding
+register serializers. In the example below we use the [contextual][_contextual] function with the serializer. The corresponding
 class this serializer is defined for is fetched automatically via the `reified` type parameter.  
 
 ```kotlin
@@ -1068,7 +1144,7 @@ fun main() {
 }
 ```
 
-> You can get the full code [here](../guide/example/example-serializer-21.kt).
+> You can get the full code [here](../guide/example/example-serializer-22.kt).
 ```text
 {"name":"Kotlin","stableReleaseDate":1455494400000}
 ```
@@ -1112,7 +1188,8 @@ using the [Serializer] annotation on an object with the [`forClass`][Serializer.
 ```kotlin         
 // NOT @Serializable
 class Project(val name: String, val language: String)
-                           
+
+@OptIn(ExperimentalSerializationApi::class)
 @Serializer(forClass = Project::class)
 object ProjectSerializer
 ```
@@ -1127,7 +1204,7 @@ fun main() {
 }
 ```          
 
-> You can get the full code [here](../guide/example/example-serializer-22.kt).
+> You can get the full code [here](../guide/example/example-serializer-23.kt).
 
 This gets all the `Project` properties serialized:
 
@@ -1137,7 +1214,7 @@ This gets all the `Project` properties serialized:
 
 <!--- TEST -->
 
-### External serialization uses properties 
+### External serialization uses properties
 
 As we saw earlier, the regular `@Serializable` annotation creates a serializer so that 
 [Backing fields are serialized](basic-serialization.md#backing-fields-are-serialized). _External_ serialization using 
@@ -1157,8 +1234,9 @@ class Project(
         get() = "kotlin/$name"                                         
 
     private var locked: Boolean = false // private, not accessible -- not serialized 
-}              
+}
 
+@OptIn(ExperimentalSerializationApi::class)
 @Serializer(forClass = Project::class)
 object ProjectSerializer
 
@@ -1168,7 +1246,7 @@ fun main() {
 }
 ```             
 
-> You can get the full code [here](../guide/example/example-serializer-23.kt).
+> You can get the full code [here](../guide/example/example-serializer-24.kt).
 
 The output is shown below.
 
@@ -1198,6 +1276,7 @@ The next chapter covers [Polymorphism](polymorphism.md).
 [Serializable.with]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization/-serializable/with.html
 [SerialName]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization/-serial-name/index.html
 [UseSerializers]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization/-use-serializers/index.html
+[Polymorphic]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization/-polymorphic/index.html
 [ContextualSerializer]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization/-contextual-serializer/index.html
 [Contextual]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization/-contextual/index.html
 [UseContextualSerialization]: https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-core/kotlinx.serialization/-use-contextual-serialization/index.html

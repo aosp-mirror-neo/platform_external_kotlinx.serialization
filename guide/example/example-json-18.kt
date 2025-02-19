@@ -4,14 +4,15 @@ package example.exampleJson18
 import kotlinx.serialization.*
 import kotlinx.serialization.json.*
 
-@Serializable
-data class Project(val name: String, val language: String)
-
 fun main() {
-    val element = buildJsonObject {
-        put("name", "kotlinx.serialization")
-        put("language", "Kotlin")
-    }
-    val data = Json.decodeFromJsonElement<Project>(element)
-    println(data)
+    val element = Json.parseToJsonElement("""
+        {
+            "name": "kotlinx.serialization",
+            "forks": [{"votes": 42}, {"votes": 9000}, {}]
+        }
+    """)
+    val sum = element
+        .jsonObject["forks"]!!
+        .jsonArray.sumOf { it.jsonObject["votes"]?.jsonPrimitive?.int ?: 0 }
+    println(sum)
 }
