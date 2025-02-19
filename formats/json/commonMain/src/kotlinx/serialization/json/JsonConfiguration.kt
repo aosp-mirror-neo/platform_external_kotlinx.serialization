@@ -22,7 +22,6 @@ public class JsonConfiguration @OptIn(ExperimentalSerializationApi::class) inter
     public val isLenient: Boolean = false,
     public val allowStructuredMapKeys: Boolean = false,
     public val prettyPrint: Boolean = false,
-    @ExperimentalSerializationApi
     public val explicitNulls: Boolean = true,
     @ExperimentalSerializationApi
     public val prettyPrintIndent: String = "    ",
@@ -38,6 +37,13 @@ public class JsonConfiguration @OptIn(ExperimentalSerializationApi::class) inter
     @ExperimentalSerializationApi
     public val allowTrailingComma: Boolean = false,
     @ExperimentalSerializationApi
+    public val allowComments: Boolean = false,
+    @ExperimentalSerializationApi
+    @set:Deprecated(
+        "JsonConfiguration is not meant to be mutable, and will be made read-only in a future release. " +
+            "The `Json(from = ...) {}` copy builder should be used instead.",
+        level = DeprecationLevel.ERROR
+    )
     public var classDiscriminatorMode: ClassDiscriminatorMode = ClassDiscriminatorMode.POLYMORPHIC,
 ) {
 
@@ -49,7 +55,7 @@ public class JsonConfiguration @OptIn(ExperimentalSerializationApi::class) inter
                 "prettyPrintIndent='$prettyPrintIndent', coerceInputValues=$coerceInputValues, useArrayPolymorphism=$useArrayPolymorphism, " +
                 "classDiscriminator='$classDiscriminator', allowSpecialFloatingPointValues=$allowSpecialFloatingPointValues, " +
                 "useAlternativeNames=$useAlternativeNames, namingStrategy=$namingStrategy, decodeEnumsCaseInsensitive=$decodeEnumsCaseInsensitive, " +
-                "allowTrailingComma=$allowTrailingComma, classDiscriminatorMode=$classDiscriminatorMode)"
+                "allowTrailingComma=$allowTrailingComma, allowComments=$allowComments, classDiscriminatorMode=$classDiscriminatorMode)"
     }
 }
 
@@ -57,7 +63,7 @@ public class JsonConfiguration @OptIn(ExperimentalSerializationApi::class) inter
  * Defines which classes and objects should have their serial name included in the json as so-called class discriminator.
  *
  * Class discriminator is a JSON field added by kotlinx.serialization that has [JsonBuilder.classDiscriminator] as a key (`type` by default),
- * and class' serial name as a value (fully-qualified name by default, can be changed with [SerialName] annotation).
+ * and class' serial name as a value (fully qualified name by default, can be changed with [SerialName] annotation).
  *
  * Class discriminator is important for serializing and deserializing [polymorphic class hierarchies](https://github.com/Kotlin/kotlinx.serialization/blob/master/docs/polymorphism.md#sealed-classes).
  * Default [ClassDiscriminatorMode.POLYMORPHIC] mode adds discriminator only to polymorphic classes.

@@ -351,8 +351,8 @@ even if they are numbers in Kotlin, as we can see below.
 
 ### Unit and singleton objects
 
-The Kotlin builtin `Unit` type is also serializable. 
-`Unit` is a Kotlin [singleton object](https://kotlinlang.org/docs/tutorials/kotlin-for-py/objects-and-companion-objects.html), 
+The Kotlin builtin [Unit](https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-unit/) type is also serializable. 
+`Unit` is a Kotlin [singleton object](https://kotlinlang.org/docs/object-declarations.html#object-declarations-overview), 
 and is handled equally with other Kotlin objects.
 
 Conceptually, a singleton is a class with only one instance, meaning that state does not define the object, 
@@ -383,7 +383,7 @@ which is explained in the [Polymorphism. Objects](polymorphism.md#objects) secti
 <!--- TEST -->
 
 > Serialization of objects is format specific. Other formats may represent objects differently, 
-> e.g. using their fully-qualified names.
+> e.g. using their fully qualified names.
 
 ### Duration
 
@@ -427,7 +427,7 @@ fun main() {
 ``` 
 > You can get the full code [here](../guide/example/example-builtin-13.kt).
 
-When encoding, the serializer for the `Nothing` was not used
+When encoding, the serializer for `Nothing` was not used
 
 ```text
 {"value":42}

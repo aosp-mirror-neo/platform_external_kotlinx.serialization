@@ -31,6 +31,9 @@ import kotlin.reflect.*
  * MyAnotherData.serializer() // <- returns MyAnotherDataCustomSerializer
  * ```
  *
+ * To continue generating the implementation of [KSerializer] using the plugin, specify the [KeepGeneratedSerializer] annotation.
+ * In this case, the serializer will be available via `generatedSerializer()` function, and will also be used in the heirs.
+ *
  * For annotated properties, specifying [with] parameter is mandatory and can be used to override
  * serializer on the use-site without affecting the rest of the usages:
  * ```
@@ -39,9 +42,9 @@ import kotlin.reflect.*
  *
  * @Serializable
  * class RgbExample(
- *     @Serializable(with = RgbAsHexString::class) p1: RgpPixel, // Serialize as HEX string, e.g. #FFFF00
- *     @Serializable(with = RgbAsSingleInt::class) p2: RgpPixel, // Serialize as single integer, e.g. 16711680
- *     p3: RgpPixel // Serialize as 3 short components, e.g. { "red": 255, "green": 255, "blue": 0 }
+ *     @Serializable(with = RgbAsHexString::class) p1: RgbPixel, // Serialize as HEX string, e.g. #FFFF00
+ *     @Serializable(with = RgbAsSingleInt::class) p2: RgbPixel, // Serialize as single integer, e.g. 16711680
+ *     p3: RgbPixel // Serialize as 3 short components, e.g. { "red": 255, "green": 255, "blue": 0 }
  * )
  * ```
  * In this example, each pixel will be serialized using different data representation.
@@ -64,6 +67,7 @@ import kotlin.reflect.*
  *
  * @see UseSerializers
  * @see Serializer
+ * @see KeepGeneratedSerializer
  */
 @MustBeDocumented
 @Target(AnnotationTarget.PROPERTY, AnnotationTarget.CLASS, AnnotationTarget.TYPE)
@@ -125,7 +129,7 @@ public annotation class Serializer(
  * the name of the property, e.g. by `Json`.
  *
  * By default, [SerialDescriptor.serialName] and [SerialDescriptor.getElementName]
- * are associated with fully-qualified name of the target class and the name of the property respectively.
+ * are associated with fully qualified name of the target class and the name of the property respectively.
  * Applying this annotation changes the visible name to the given [value]:
  *
  * ```
@@ -330,13 +334,16 @@ public annotation class Polymorphic
  *
  * Automatically generated serializer is available via `generatedSerializer()` function in companion object of serializable class.
  *
- * Generated serializers allow to use custom serializers on classes from which other serializable classes are inherited.
+ * Keeping generated serializers allow to use plugin generated serializer in inheritors even if custom serializer is specified.
  *
- * Used only with the [Serializable] annotation.
+ * Used only with annotation [Serializable] with the specified argument [Serializable.with], e.g. `@Serializable(with=SomeSerializer::class)`.
  *
- * A compiler version `2.0.0` and higher is required.
+ * Annotation is not allowed on classes involved in polymorphic serialization:
+ * interfaces, sealed classes, abstract classes, classes marked by [Polymorphic].
+ *
+ * A compiler version `2.0.20` or higher is required.
  */
-@InternalSerializationApi
+@ExperimentalSerializationApi
 @Target(AnnotationTarget.CLASS)
 @Retention(AnnotationRetention.RUNTIME)
 public annotation class KeepGeneratedSerializer
