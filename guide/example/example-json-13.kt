@@ -4,13 +4,18 @@ package example.exampleJson13
 import kotlinx.serialization.*
 import kotlinx.serialization.json.*
 
-val format = Json { decodeEnumsCaseInsensitive = true }
-
-enum class Cases { VALUE_A, @JsonNames("Alternative") VALUE_B }
+@OptIn(ExperimentalSerializationApi::class) // classDiscriminatorMode is an experimental setting for now
+val format = Json { classDiscriminatorMode = ClassDiscriminatorMode.NONE }
 
 @Serializable
-data class CasesList(val cases: List<Cases>)
+sealed class Project {
+    abstract val name: String
+}
+
+@Serializable
+class OwnedProject(override val name: String, val owner: String) : Project()
 
 fun main() {
-  println(format.decodeFromString<CasesList>("""{"cases":["value_A", "alternative"]}""")) 
+    val data: Project = OwnedProject("kotlinx.coroutines", "kotlin")
+    println(format.encodeToString(data))
 }
