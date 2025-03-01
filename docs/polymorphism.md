@@ -293,7 +293,7 @@ fun main() {
 
 > You can get the full code [here](../guide/example/example-poly-08.kt).
 
-An object serializes as an empty class, also using its fully-qualified class name as type by default:
+An object serializes as an empty class, also using its fully qualified class name as type by default:
 
 ```text 
 [{"type":"example.examplePoly08.EmptyResponse"},{"type":"example.examplePoly08.TextResponse","text":"OK"}]
@@ -713,7 +713,7 @@ data class OkResponse<out T>(val data: T) : Response<T>()
  
 Kotlin Serialization does not have a builtin strategy to represent the actually provided argument type for the
 type parameter `T` when serializing a property of the polymorphic type `OkResponse<T>`. We have to provide this 
-strategy explicitly when defining the serializers module for the `Response`. In the below example we
+strategy explicitly when defining the serializers module for `Response`. In the below example we
 use `OkResponse.serializer(...)` to retrieve 
 the [Plugin-generated generic serializer](serializers.md#plugin-generated-generic-serializer) of
 the `OkResponse` class and instantiate it with the [PolymorphicSerializer] instance with 
