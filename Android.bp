@@ -61,3 +61,27 @@ genrule {
     out: ["kotlinx_serialization_core_manifest.txt"],
     cmd: "$(location android_generate_manifest.sh) $(location METADATA) $(location core/build.gradle.kts) > $(out)",
 }
+
+java_test {
+    name: "kotlinx_serialization_core_test",
+    host_supported: true,
+    srcs: ["core/jvmTest/src/**/*.kt"],
+    common_srcs: ["core/commonTest/src/**/*.kt"],
+    associates: ["kotlinx_serialization_core"],
+    static_libs: [
+        "kotlinx_serialization_core",
+        "kotlin-reflect",
+        "kotlin-test",
+        "junit",
+    ],
+    kotlincflags: [
+        "-Xmulti-platform",
+        "-Xexpect-actual-classes",
+        "-opt-in=kotlinx.serialization.ExperimentalSerializationApi",
+        "-opt-in=kotlinx.serialization.InternalSerializationApi",
+        "-opt-in=kotlinx.serialization.SealedSerializationApi",
+    ],
+    kotlin_plugins: ["kotlin-serialize-compiler-plugin"],
+    test_suites: ["general-tests"],
+    device_common_data: [":cts-dalvik-device-test-runner"],
+}
