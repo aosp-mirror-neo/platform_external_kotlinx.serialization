@@ -129,22 +129,6 @@ public sealed class Json(
         }
     }
 
-    /**
-     * Decodes and deserializes the given JSON [string] to the value of type [T] using deserializer
-     * retrieved from the reified type parameter.
-     * Example:
-     * ```
-     * @Serializable
-     * data class Project(val name: String, val language: String)
-     * //  Project(name=kotlinx.serialization, language=Kotlin)
-     * println(Json.decodeFromString<Project>("""{"name":"kotlinx.serialization","language":"Kotlin"}"""))
-     * ```
-     *
-     * @throws SerializationException in case of any decoding-specific error
-     * @throws IllegalArgumentException if the decoded input is not a valid instance of [T]
-     */
-    public inline fun <reified T> decodeFromString(@FormatLanguage("json", "", "") string: String): T =
-            decodeFromString(serializersModule.serializer(), string)
 
     /**
      * Deserializes the given JSON [string] into a value of type [T] using the given [deserializer].
@@ -194,6 +178,48 @@ public sealed class Json(
     public fun parseToJsonElement(@FormatLanguage("json", "", "") string: String): JsonElement {
         return decodeFromString(JsonElementSerializer, string)
     }
+
+    /**
+     * Following functions are copied from extensions on StringFormat
+     * to streamline experience for newcomers, since IDE does not star-import kotlinx.serialization.* automatically
+     */
+
+    /**
+     * Serializes the [value] of type [T] into an equivalent JSON using serializer
+     * retrieved from the reified type parameter.
+     *
+     * Example of usage:
+     * ```
+     * @Serializable
+     * class Project(val name: String, val language: String)
+     *
+     * val data = Project("kotlinx.serialization", "Kotlin")
+     *
+     * // Prints {"name":"kotlinx.serialization","language":"Kotlin"}
+     * println(Json.encodeToString(data))
+     * ```
+     *
+     * @throws [SerializationException] if the given value cannot be serialized to JSON.
+     */
+    public inline fun <reified T> encodeToString(value: T): String =
+        encodeToString(serializersModule.serializer(), value)
+
+    /**
+     * Decodes and deserializes the given JSON [string] to the value of type [T] using deserializer
+     * retrieved from the reified type parameter.
+     * Example:
+     * ```
+     * @Serializable
+     * data class Project(val name: String, val language: String)
+     * //  Project(name=kotlinx.serialization, language=Kotlin)
+     * println(Json.decodeFromString<Project>("""{"name":"kotlinx.serialization","language":"Kotlin"}"""))
+     * ```
+     *
+     * @throws SerializationException in case of any decoding-specific error
+     * @throws IllegalArgumentException if the decoded input is not a valid instance of [T]
+     */
+    public inline fun <reified T> decodeFromString(@FormatLanguage("json", "", "") string: String): T =
+        decodeFromString(serializersModule.serializer(), string)
 }
 
 /**
@@ -411,6 +437,11 @@ public class JsonBuilder internal constructor(json: Json) {
      * // Fails with "Encountered an unknown key 'version'"
      * Json.decodeFromString<Project>("""{"name":"unknown", "version": 2.0}""")
      * ```
+     *
+     * In case you wish to allow unknown properties only for specific class(es),
+     * consider using [JsonIgnoreUnknownKeys] annotation instead of this configuration flag.
+     *
+     * @see JsonIgnoreUnknownKeys
      */
     public var ignoreUnknownKeys: Boolean = json.configuration.ignoreUnknownKeys
 
@@ -495,6 +526,13 @@ public class JsonBuilder internal constructor(json: Json) {
     /**
      * Name of the class descriptor property for polymorphic serialization.
      * `type` by default.
+     *
+     * Note that if your class has any serial names that are equal to [classDiscriminator]
+     * (e.g., `@Serializable class Foo(val type: String)`), an [IllegalArgumentException] will be thrown from `Json {}` builder.
+     * You can disable this check and class discriminator inclusion with [ClassDiscriminatorMode.NONE], but kotlinx.serialization will not be
+     * able to deserialize such data back.
+     *
+     * @see classDiscriminatorMode
      */
     public var classDiscriminator: String = json.configuration.classDiscriminator
 
@@ -504,6 +542,8 @@ public class JsonBuilder internal constructor(json: Json) {
      *
      * Other modes are generally intended to produce JSON for consumption by third-party libraries,
      * therefore, this setting does not affect the deserialization process.
+     *
+     * @see classDiscriminator
      */
     @ExperimentalSerializationApi
     public var classDiscriminatorMode: ClassDiscriminatorMode = json.configuration.classDiscriminatorMode
@@ -669,7 +709,7 @@ private class JsonImpl(configuration: JsonConfiguration, module: SerializersModu
 
     private fun validateConfiguration() {
         if (serializersModule == EmptySerializersModule()) return // Fast-path for in-place JSON allocations
-        val collector = PolymorphismValidator(configuration.useArrayPolymorphism, configuration.classDiscriminator)
+        val collector = JsonSerializersModuleValidator(configuration)
         serializersModule.dumpTo(collector)
     }
 }

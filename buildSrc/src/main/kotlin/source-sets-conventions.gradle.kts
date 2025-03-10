@@ -32,7 +32,7 @@ kotlin {
         @OptIn(ExperimentalKotlinGradlePluginApi::class)
         compilerOptions {
             jvmTarget = JvmTarget.JVM_1_8
-            freeCompilerArgs.add("-Xjdk-release=1.8")
+            freeCompilerArgs.addAll("-Xjdk-release=1.8", "-Xjvm-default=all-compatibility")
         }
     }
     jvmToolchain(jdkToolchainVersion)
@@ -64,12 +64,24 @@ kotlin {
     sourceSets.all {
         kotlin.srcDirs("$name/src")
         resources.srcDirs("$name/resources")
-        languageSettings {
-            progressiveMode = true
+    }
 
-            optIn("kotlin.ExperimentalMultiplatform")
-            optIn("kotlinx.serialization.InternalSerializationApi")
+    compilerOptions {
+        // These configuration replaces 'languageSettings' config on line 67
+        progressiveMode.set(true)
+        optIn.addAll(
+            listOf(
+                "kotlin.ExperimentalMultiplatform",
+                "kotlin.ExperimentalSubclassOptIn",
+                "kotlinx.serialization.InternalSerializationApi",
+                "kotlinx.serialization.SealedSerializationApi",
+            )
+        )
+        if (overriddenLanguageVersion != null) {
+            languageVersion = KotlinVersion.fromVersion(overriddenLanguageVersion!!)
+            freeCompilerArgs.add("-Xsuppress-version-warnings")
         }
+        freeCompilerArgs.add("-Xexpect-actual-classes")
     }
 
     sourceSets {
@@ -112,6 +124,7 @@ kotlin {
     sourceSets.matching({ it.name.contains("Test") }).configureEach {
         languageSettings {
             optIn("kotlinx.serialization.InternalSerializationApi")
+            optIn("kotlinx.serialization.SealedSerializationApi")
             optIn("kotlinx.serialization.ExperimentalSerializationApi")
         }
     }
@@ -123,10 +136,5 @@ tasks.withType(KotlinCompilationTask::class).configureEach {
         if (isMainTaskName) {
             allWarningsAsErrors = true
         }
-        if (overriddenLanguageVersion != null) {
-            languageVersion = KotlinVersion.fromVersion(overriddenLanguageVersion!!)
-            freeCompilerArgs.add("-Xsuppress-version-warnings")
-        }
-        freeCompilerArgs.add("-Xexpect-actual-classes")
     }
 }
