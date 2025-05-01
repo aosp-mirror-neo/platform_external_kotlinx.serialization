@@ -49,7 +49,7 @@ internal fun AbstractJsonLexer.throwInvalidFloatingPointDecoded(result: Number):
 internal fun AbstractJsonLexer.invalidTrailingComma(entity: String = "object"): Nothing {
     fail("Trailing comma before the end of JSON $entity",
         position = currentPosition - 1,
-        hint = "Trailing commas are non-complaint JSON and not allowed by default. Use 'allowTrailingCommas = true' in 'Json {}' builder to support them."
+        hint = "Trailing commas are non-complaint JSON and not allowed by default. Use 'allowTrailingComma = true' in 'Json {}' builder to support them."
     )
 }
 
@@ -74,13 +74,6 @@ private fun unexpectedFpErrorMessage(value: Number, key: String, output: String)
             "$specialFlowingValuesHint\n" +
             "Current output: ${output.minify()}"
 }
-
-internal fun UnknownKeyException(key: String, input: String) = JsonDecodingException(
-    -1,
-    "Encountered an unknown key '$key'.\n" +
-            "$ignoreUnknownKeysHint\n" +
-            "Current input: ${input.minify()}"
-)
 
 internal fun CharSequence.minify(offset: Int = -1): CharSequence {
     if (length < 200) return this

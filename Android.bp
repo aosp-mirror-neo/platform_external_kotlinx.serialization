@@ -5,21 +5,22 @@ java_library {
     srcs: ["core/jvmMain/src/kotlinx/serialization/**/*.kt"],
     common_srcs: ["core/commonMain/src/kotlinx/serialization/**/*.kt"],
     kotlincflags: [
-        "-Xmulti-platform",
         "-Xexpect-actual-classes",
-        "-opt-in=kotlin.ExperimentalStdlibApi",
+        "-Xmulti-platform",
         "-opt-in=kotlin.ExperimentalMultiplatform",
-        "-opt-in=kotlinx.serialization.internal.CoreFriendModuleApi",
+        "-opt-in=kotlin.ExperimentalStdlibApi",
         "-opt-in=kotlinx.serialization.ExperimentalSerializationApi",
         "-opt-in=kotlinx.serialization.InternalSerializationApi",
+        "-opt-in=kotlinx.serialization.internal.CoreFriendModuleApi",
+        "-opt-in=kotlinx.serialization.SealedSerializationApi",
     ],
     optimize: {
         proguard_flags_files: ["rules/*"],
         export_proguard_flags_files: true,
     },
     apex_available: [
-        "//apex_available:platform",
         "//apex_available:anyapex",
+        "//apex_available:platform",
     ],
 }
 
@@ -30,18 +31,19 @@ java_library {
     srcs: ["formats/json/jvmMain/src/kotlinx/serialization/**/*.kt"],
     common_srcs: ["formats/json/commonMain/src/kotlinx/serialization/**/*.kt"],
     kotlincflags: [
-        "-Xmulti-platform",
         "-Xexpect-actual-classes",
-        "-opt-in=kotlin.ExperimentalStdlibApi",
+        "-Xmulti-platform",
         "-opt-in=kotlin.ExperimentalMultiplatform",
-        "-opt-in=kotlinx.serialization.internal.CoreFriendModuleApi",
-        "-opt-in=kotlinx.serialization.json.internal.JsonFriendModuleApi",
+        "-opt-in=kotlin.ExperimentalStdlibApi",
         "-opt-in=kotlinx.serialization.ExperimentalSerializationApi",
         "-opt-in=kotlinx.serialization.InternalSerializationApi",
+        "-opt-in=kotlinx.serialization.internal.CoreFriendModuleApi",
+        "-opt-in=kotlinx.serialization.json.internal.JsonFriendModuleApi",
+        "-opt-in=kotlinx.serialization.SealedSerializationApi",
     ],
     static_libs: ["kotlinx_serialization_core"],
     apex_available: [
-        "//apex_available:platform",
         "//apex_available:anyapex",
+        "//apex_available:platform",
     ],
 }

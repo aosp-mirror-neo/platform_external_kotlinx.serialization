@@ -14,7 +14,7 @@ internal const val lenientHint = "Use 'isLenient = true' in 'Json {}' builder to
 internal const val coerceInputValuesHint = "Use 'coerceInputValues = true' in 'Json {}' builder to coerce nulls if property has a default value."
 internal const val specialFlowingValuesHint =
     "It is possible to deserialize them using 'JsonBuilder.allowSpecialFloatingPointValues = true'"
-internal const val ignoreUnknownKeysHint = "Use 'ignoreUnknownKeys = true' in 'Json {}' builder to ignore unknown keys."
+internal const val ignoreUnknownKeysHint = "Use 'ignoreUnknownKeys = true' in 'Json {}' builder or '@JsonIgnoreUnknownKeys' annotation to ignore unknown keys."
 internal const val allowStructuredMapKeysHint =
     "Use 'allowStructuredMapKeys = true' in 'Json {}' builder to convert such maps to [key1, value1, key2, value2,...] arrays."
 
@@ -223,12 +223,16 @@ internal abstract class AbstractJsonLexer {
         fail(charToTokenClass(expected))
     }
 
-    internal fun fail(expectedToken: Byte, wasConsumed: Boolean = true): Nothing {
+    internal inline fun fail(
+        expectedToken: Byte,
+        wasConsumed: Boolean = true,
+        message: (expected: String, source: String) -> String = { expected, source -> "Expected $expected, but had '$source' instead" }
+    ): Nothing {
         // Slow path, never called in normal code, can avoid optimizing it
         val expected = tokenDescription(expectedToken)
         val position = if (wasConsumed) currentPosition - 1 else currentPosition
         val s = if (currentPosition == source.length || position < 0) "EOF" else source[position].toString()
-        fail("Expected $expected, but had '$s' instead", position)
+        fail(message(expected, s), position)
     }
 
     open fun peekNextToken(): Byte {
@@ -297,7 +301,7 @@ internal abstract class AbstractJsonLexer {
     }
 
     open fun indexOf(char: Char, startPos: Int) = source.indexOf(char, startPos)
-    open fun substring(startPos: Int, endPos: Int) =  source.substring(startPos, endPos)
+    open fun substring(startPos: Int, endPos: Int) = source.substring(startPos, endPos)
 
     /*
      * This method is a copy of consumeString, but used for key of json objects, so there
@@ -572,7 +576,10 @@ internal abstract class AbstractJsonLexer {
         // but still would like an error to point to the beginning of the key, so we are backtracking it
         val processed = substring(0, currentPosition)
         val lastIndexOf = processed.lastIndexOf(key)
-        fail("Encountered an unknown key '$key'", lastIndexOf, ignoreUnknownKeysHint)
+        throw JsonDecodingException(
+            "Encountered an unknown key '$key' at offset $lastIndexOf at path: ${path.getPath()}\n$ignoreUnknownKeysHint\n" +
+                "JSON input: ${source.minify(lastIndexOf)}"
+        )
     }
 
     fun fail(message: String, position: Int = currentPosition, hint: String = ""): Nothing {
@@ -669,6 +676,15 @@ internal abstract class AbstractJsonLexer {
             accumulator != Long.MIN_VALUE -> -accumulator
             else -> fail("Numeric value overflow")
         }
+    }
+
+    fun consumeNumericLiteralFully(): Long {
+        val result = consumeNumericLiteral()
+        val next = consumeNextToken()
+        if (next != TC_EOF) {
+            fail(TC_EOF) { _, source -> "Expected input to contain a single valid number, but got '$source' after it" }
+        }
+        return result
     }
 
 
