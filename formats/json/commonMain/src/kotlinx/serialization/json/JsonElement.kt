@@ -36,7 +36,7 @@ public sealed class JsonPrimitive : JsonElement() {
      * Indicates whether the primitive was explicitly constructed from [String] and
      * whether it should be serialized as one. E.g. `JsonPrimitive("42")` is represented
      * by a string, while `JsonPrimitive(42)` is not.
-     * These primitives will be serialized as `42` and `"42"` respectively.
+     * These primitives will be serialized as `"42"` and `42` respectively.
      */
     public abstract val isString: Boolean
 
@@ -256,7 +256,7 @@ public val JsonElement.jsonNull: JsonNull
  */
 public val JsonPrimitive.int: Int
     get() {
-        val result = mapExceptions { StringJsonLexer(content).consumeNumericLiteral() }
+        val result = exceptionToNumberFormatException { parseLongImpl() }
         if (result !in Int.MIN_VALUE..Int.MAX_VALUE) throw NumberFormatException("$content is not an Int")
         return result.toInt()
     }
@@ -266,7 +266,7 @@ public val JsonPrimitive.int: Int
  */
 public val JsonPrimitive.intOrNull: Int?
     get() {
-        val result = mapExceptionsToNull { StringJsonLexer(content).consumeNumericLiteral() } ?: return null
+        val result = exceptionToNull { parseLongImpl() } ?: return null
         if (result !in Int.MIN_VALUE..Int.MAX_VALUE) return null
         return result.toInt()
     }
@@ -275,14 +275,13 @@ public val JsonPrimitive.intOrNull: Int?
  * Returns content of current element as long
  * @throws NumberFormatException if current element is not a valid representation of number
  */
-public val JsonPrimitive.long: Long get() = mapExceptions { StringJsonLexer(content).consumeNumericLiteral() }
+public val JsonPrimitive.long: Long get() = exceptionToNumberFormatException { parseLongImpl() }
 
 /**
  * Returns content of current element as long or `null` if current element is not a valid representation of number
  */
 public val JsonPrimitive.longOrNull: Long?
-    get() =
-        mapExceptionsToNull { StringJsonLexer(content).consumeNumericLiteral() }
+    get() = exceptionToNull { parseLongImpl() }
 
 /**
  * Returns content of current element as double
@@ -326,7 +325,7 @@ public val JsonPrimitive.contentOrNull: String? get() = if (this is JsonNull) nu
 private fun JsonElement.error(element: String): Nothing =
     throw IllegalArgumentException("Element ${this::class} is not a $element")
 
-private inline fun <T> mapExceptionsToNull(f: () -> T): T? {
+private inline fun <T> exceptionToNull(f: () -> T): T? {
     return try {
         f()
     } catch (e: JsonDecodingException) {
@@ -334,7 +333,7 @@ private inline fun <T> mapExceptionsToNull(f: () -> T): T? {
     }
 }
 
-private inline fun <T> mapExceptions(f: () -> T): T {
+private inline fun <T> exceptionToNumberFormatException(f: () -> T): T {
     return try {
         f()
     } catch (e: JsonDecodingException) {
@@ -345,3 +344,6 @@ private inline fun <T> mapExceptions(f: () -> T): T {
 @PublishedApi
 internal fun unexpectedJson(key: String, expected: String): Nothing =
     throw IllegalArgumentException("Element $key is not a $expected")
+
+// Use this function to avoid re-wrapping exception into NumberFormatException
+internal fun JsonPrimitive.parseLongImpl(): Long = StringJsonLexer(content).consumeNumericLiteralFully()
