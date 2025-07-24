@@ -2,17 +2,10 @@
  * Copyright 2017-2024 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license.
  */
 
-@file:OptIn(ExperimentalWasmDsl::class)
-
 import org.gradle.kotlin.dsl.*
 import org.jetbrains.kotlin.gradle.*
 import org.jetbrains.kotlin.gradle.dsl.*
-import org.jetbrains.kotlin.gradle.plugin.mpp.*
-import org.jetbrains.kotlin.gradle.targets.js.dsl.ExperimentalWasmDsl
-import org.jetbrains.kotlin.gradle.targets.js.nodejs.NodeJsRootExtension
-import org.jetbrains.kotlin.gradle.targets.native.tasks.*
 import org.jetbrains.kotlin.gradle.tasks.*
-import org.jetbrains.kotlin.gradle.testing.*
 
 plugins {
     kotlin("multiplatform")
@@ -28,7 +21,6 @@ kotlin {
     explicitApi()
 
     jvm {
-        withJava()
         @OptIn(ExperimentalKotlinGradlePluginApi::class)
         compilerOptions {
             jvmTarget = JvmTarget.JVM_1_8
@@ -53,10 +45,12 @@ kotlin {
         }
     }
 
+    @OptIn(ExperimentalWasmDsl::class)
     wasmJs {
         nodejs()
     }
 
+    @OptIn(ExperimentalWasmDsl::class)
     wasmWasi {
         nodejs()
     }
@@ -126,15 +120,6 @@ kotlin {
             optIn("kotlinx.serialization.InternalSerializationApi")
             optIn("kotlinx.serialization.SealedSerializationApi")
             optIn("kotlinx.serialization.ExperimentalSerializationApi")
-        }
-    }
-}
-
-tasks.withType(KotlinCompilationTask::class).configureEach {
-    compilerOptions {
-        val isMainTaskName = name.startsWith("compileKotlin")
-        if (isMainTaskName) {
-            allWarningsAsErrors = true
         }
     }
 }
