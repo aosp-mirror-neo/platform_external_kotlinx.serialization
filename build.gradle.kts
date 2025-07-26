@@ -3,7 +3,9 @@
  */
 
 import kotlinx.validation.*
+import org.gradle.kotlin.dsl.withType
 import org.jetbrains.dokka.gradle.*
+import org.jetbrains.kotlin.gradle.plugin.getKotlinPluginVersion
 
 plugins {
     base
@@ -85,17 +87,8 @@ tasks.named("knitPrepare") {
 
 // == compiler flags setup ==
 
-tasks.withType<org.jetbrains.kotlin.gradle.tasks.Kotlin2JsCompile>().configureEach {
-    compilerOptions { freeCompilerArgs.add("-Xpartial-linkage-loglevel=ERROR") }
-}
-tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinNativeCompile>().configureEach {
-    compilerOptions { freeCompilerArgs.add("-Xpartial-linkage-loglevel=ERROR") }
-}
-
 subprojects {
-    tasks.withType<org.jetbrains.kotlin.gradle.tasks.AbstractKotlinCompile<*>>().configureEach {
-        compilerOptions.freeCompilerArgs.addAll(globalCompilerArgs)
-    }
+    apply(plugin = "global-compiler-options")
 }
 
 // == TeamCity setup ==
@@ -159,19 +152,18 @@ tasks.withType<org.jetbrains.kotlin.gradle.targets.js.npm.tasks.KotlinNpmInstall
     args.add("--ignore-engines")
 }
 
-// == compiler version setup ==
-gradle.taskGraph.whenReady {
-    println("Using Kotlin compiler version: ${org.jetbrains.kotlin.config.KotlinCompilerVersion.VERSION}")
-}
+// == KGP version setup ==
+logger.warn("Project is using Kotlin Gradle plugin version: ${project.getKotlinPluginVersion()}")
 
 // == projects lists and flags ==
 // getters are required because of variable lazy initialization in Gradle
-val unpublishedProjects get() = setOf("benchmark", "guide", "kotlinx-serialization-json-tests")
-val excludedFromBomProjects get() = unpublishedProjects + "kotlinx-serialization-bom"
-val globalCompilerArgs
-    get() = listOf(
-    "-P", "plugin:org.jetbrains.kotlinx.serialization:disableIntrinsic=false"
+val unpublishedProjects get() = setOf(
+    "benchmark",
+    "guide",
+    "kotlinx-serialization-json-tests",
+    "proto-test-model",
 )
+val excludedFromBomProjects get() = unpublishedProjects + "kotlinx-serialization-bom"
 
 val documentedSubprojects get() = setOf("kotlinx-serialization-core",
     "kotlinx-serialization-json",
