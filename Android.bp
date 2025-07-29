@@ -22,6 +22,7 @@ java_library {
         "//apex_available:anyapex",
         "//apex_available:platform",
     ],
+    manifest: ":kotlinx_serialization_core_manifest",
 }
 
 java_library {
@@ -46,4 +47,17 @@ java_library {
         "//apex_available:anyapex",
         "//apex_available:platform",
     ],
+}
+
+// Compute the contents of the MANIFEST.MF file for kotlinx_serialization_core.
+// This should produce similar results to the logic in core/build.gradle.kts.
+genrule {
+    name: "kotlinx_serialization_core_manifest",
+    tool_files: ["android_generate_manifest.sh"],
+    srcs: [
+        "METADATA",
+        "core/build.gradle.kts",
+    ],
+    out: ["kotlinx_serialization_core_manifest.txt"],
+    cmd: "$(location android_generate_manifest.sh) $(location METADATA) $(location core/build.gradle.kts) > $(out)",
 }
