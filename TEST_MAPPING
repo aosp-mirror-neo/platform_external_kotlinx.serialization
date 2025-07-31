@@ -1,0 +1,7 @@
+{
+  "postsubmit": [
+    {
+      "name": "kotlinx_serialization_core_test"
+    }
+  ]
+}
