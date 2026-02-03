@@ -7,7 +7,7 @@ shift
 build_gradle_kts=$1
 shift
 
-version=$(grep version: ${metadata} | sed -e 's/^\s*version: "v\(.*\)"$/\1/')
+version=$(grep closest_version: ${metadata} | sed -e 's/^\s*closest_version: "v\(.*\)"$/\1/')
 kotlin_version=$(grep '"Require-Kotlin-Version" to' ${build_gradle_kts} | sed -e 's/^\s*"Require-Kotlin-Version" to "\(.*\)",$/\1/')
 
 echo "Manifest-Version: 1.0"
