@@ -14,7 +14,8 @@ third_party {
   identifier {
     type: "Git"
     value: "https://github.com/Kotlin/kotlinx.serialization"
-    version: "v1.8.1"
+    version: "afd811f5221d803588ea4a2713ab6b0bd78d288a"
+    closest_version: "v1.8.1"
     primary_source: true
   }
 }
